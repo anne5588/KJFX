@@ -291,13 +291,23 @@ export const parseExcelFile = (file: File): Promise<FinancialData> => {
         console.log('发现Sheets:', workbook.SheetNames);
         
         workbook.SheetNames.forEach(sheetName => {
+          console.log(`\n=== 处理 Sheet: "${sheetName}" ===`);
           const worksheet = workbook.Sheets[sheetName];
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false }) as any[][];
           
-          if (jsonData.length === 0) return;
+          console.log(`  数据行数: ${jsonData.length}`);
+          
+          if (jsonData.length === 0) {
+            console.log('  跳过: 空表');
+            return;
+          }
+          
+          // 打印前几行用于调试
+          const preview = jsonData.slice(0, 3).map(r => r.slice(0, 3).join(',')).join(' | ');
+          console.log(`  预览: ${preview.substring(0, 100)}...`);
           
           const sheetType = detectSheetType(jsonData, sheetName);
-          console.log(`Sheet "${sheetName}" 识别为: ${sheetType}`);
+          console.log(`  识别为: ${sheetType}`);
           
           switch (sheetType) {
             case 'balance':
@@ -369,16 +379,18 @@ export const parseExcelFile = (file: File): Promise<FinancialData> => {
 
 const detectSheetType = (data: any[][], sheetName: string): string => {
   const nameLower = sheetName.toLowerCase();
+  console.log(`    [detectSheetType] 检查: "${sheetName}" -> lower: "${nameLower}"`);
   
   // 优先检查特定类型（放在前面优先匹配）
-  if (nameLower.includes('资产负债')) return 'balance';
-  if (nameLower.includes('利润') || nameLower.includes('损益')) return 'income';
-  if (nameLower.includes('现金') || nameLower.includes('cash')) return 'cashflow';
+  if (nameLower.includes('资产负债')) { console.log('      -> match: balance'); return 'balance'; }
+  if (nameLower.includes('利润') || nameLower.includes('损益')) { console.log('      -> match: income'); return 'income'; }
+  if (nameLower.includes('现金') || nameLower.includes('cash')) { console.log('      -> match: cashflow'); return 'cashflow'; }
   // 明细分类账要在科目余额表之前检查
-  if (nameLower.includes('明细') || nameLower.includes('ledger')) return 'ledger';
-  if (nameLower.includes('账龄') || nameLower.includes('aging')) return 'aging';
-  if (nameLower.includes('概要') || nameLower.includes('summary')) return 'summary';
-  if (nameLower.includes('科目') || nameLower.includes('余额')) return 'subject';
+  if (nameLower.includes('明细')) { console.log('      -> match: ledger (by name)'); return 'ledger'; }
+  if (nameLower.includes('ledger')) { console.log('      -> match: ledger (by ledger)'); return 'ledger'; }
+  if (nameLower.includes('账龄') || nameLower.includes('aging')) { console.log('      -> match: aging'); return 'aging'; }
+  if (nameLower.includes('概要') || nameLower.includes('summary')) { console.log('      -> match: summary'); return 'summary'; }
+  if (nameLower.includes('科目') || nameLower.includes('余额')) { console.log('      -> match: subject'); return 'subject'; }
   
   const content = data.slice(0, 15).map(row => row.join(' ')).join(' ');
   
