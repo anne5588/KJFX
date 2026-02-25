@@ -1,0 +1,1402 @@
+import { 
+  TrendingUp, 
+  AlertTriangle, 
+  CheckCircle, 
+  PieChart, 
+  BarChart3,
+  Lightbulb,
+  Calculator,
+  FileText,
+  GitBranch,
+  Wallet,
+  Search,
+  ShieldAlert,
+  AlertOctagon,
+  BookOpen,
+  Target,
+  TrendingDown,
+  Clock
+} from 'lucide-react';
+import type { AnalysisResult as AnalysisResultType } from '@/types/accounting';
+import { formatCurrencyUniform, type FinancialData, type DupontAnalysis } from '@/utils/excelParser';
+import { analyzeSubjectBalance, generateSubjectBalanceSuggestions } from '@/utils/advancedAnalysis';
+import { calculateComparisonAnalysis } from '@/utils/comparisonAnalysis';
+import { LedgerViewer } from './LedgerViewer';
+import { useMemo } from 'react';
+import MetricCard from './MetricCard';
+import { 
+  PieChartComponent, 
+  BarChartComponent, 
+  RadarChartComponent,
+  FinancialStructureChart,
+  IncomeExpenseChart 
+} from './Charts';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+interface AnalysisResultProps {
+  result: AnalysisResultType;
+  financialData: FinancialData;
+  dupontData: DupontAnalysis;
+}
+
+const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({ 
+  result, 
+  financialData,
+  dupontData 
+}) => {
+  const { metrics, summary } = result;
+  
+  // 科目余额表深度分�?
+  const subjectAnalysis = useMemo(() => analyzeSubjectBalance(financialData), [financialData]);
+  const subjectSuggestions = useMemo(() => generateSubjectBalanceSuggestions(subjectAnalysis), [subjectAnalysis]);
+  
+  // 期末 vs 年初对比分析
+  const comparisonAnalysis = useMemo(() => calculateComparisonAnalysis(financialData), [financialData]);
+
+  // 准备图表数据 - 从Map转换为数�?
+  const assetDistributionData = Array.from(financialData.assets.entries())
+    .slice(0, 6)
+    .map(([name, value]) => ({ name: name.substring(0, 6), value }))
+    .filter(a => a.value > 0);
+
+  const liabilityDistributionData = Array.from(financialData.liabilities.entries())
+    .slice(0, 6)
+    .map(([name, value]) => ({ name: name.substring(0, 6), value }))
+    .filter(a => a.value > 0);
+
+  const radarData = [
+    { subject: '流动比率', A: Math.min(metrics.currentRatio * 30, 100), fullMark: 100 },
+    { subject: '速动比率', A: Math.min(metrics.quickRatio * 40, 100), fullMark: 100 },
+    { subject: '偿债能力', A: Math.max(0, 100 - metrics.debtToAssetRatio), fullMark: 100 },
+    { subject: '盈利能力', A: Math.min(metrics.netProfitMargin * 3, 100), fullMark: 100 },
+    { subject: 'ROE', A: Math.min(metrics.roe * 3, 100), fullMark: 100 },
+    { subject: 'ROA', A: Math.min(metrics.roa * 5, 100), fullMark: 100 },
+  ];
+
+  const getMetricStatus = (value: number, type: 'ratio' | 'percentage') => {
+    if (type === 'ratio') {
+      if (value >= 2) return { trend: 'up' as const, status: '良好' };
+      if (value >= 1) return { trend: 'neutral' as const, status: '一般' };
+      return { trend: 'down' as const, status: '偏低' };
+    } else {
+      if (value >= 20) return { trend: 'up' as const, status: '优秀' };
+      if (value >= 10) return { trend: 'up' as const, status: '良好' };
+      if (value >= 5) return { trend: 'neutral' as const, status: '一般' };
+      return { trend: 'down' as const, status: '偏低' };
+    }
+  };
+
+  // 杜邦分析分解
+  const dupontSteps = [
+    { 
+      title: '销售净利率', 
+      value: `${dupontData.netProfitMargin}%`, 
+      desc: '净利润 ÷ 营业收入',
+      detail: `${formatCurrencyUniform(summary.netProfit)} ÷ ${formatCurrencyUniform(summary.totalIncome)}`
+    },
+    { 
+      title: '总资产周转率', 
+      value: `${dupontData.totalAssetTurnover}次`, 
+      desc: '营业收入 ÷ 总资�?,
+      detail: `${formatCurrencyUniform(summary.totalIncome)} ÷ ${formatCurrencyUniform(summary.totalAssets)}`
+    },
+    { 
+      title: '权益乘数', 
+      value: `${dupontData.equityMultiplier}`, 
+      desc: '总资产 ÷ 股东权益',
+      detail: `${formatCurrencyUniform(summary.totalAssets)} ÷ ${formatCurrencyUniform(summary.totalEquity)}`
+    },
+  ];
+
+  return (
+    <div className="space-y-8 animate-fade-in">
+      {/* 概览卡片 - 统一使用formatCurrencyUniform */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-100 text-sm">资产总计</p>
+                <p className="text-2xl font-bold">{formatCurrencyUniform(summary.totalAssets)}</p>
+              </div>
+              <PieChart className="w-8 h-8 text-blue-100" />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-red-100 text-sm">负债总计</p>
+                <p className="text-2xl font-bold">{formatCurrencyUniform(summary.totalLiabilities)}</p>
+              </div>
+              <BarChart3 className="w-8 h-8 text-red-100" />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-green-100 text-sm">所有者权益</p>
+                <p className="text-2xl font-bold">{formatCurrencyUniform(summary.totalEquity)}</p>
+              </div>
+              <CheckCircle className="w-8 h-8 text-green-100" />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className={`bg-gradient-to-br ${summary.netProfit >= 0 ? 'from-purple-500 to-purple-600' : 'from-orange-500 to-orange-600'} text-white`}>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-purple-100 text-sm">净利润</p>
+                <p className="text-2xl font-bold">{formatCurrencyUniform(summary.netProfit)}</p>
+              </div>
+              <TrendingUp className="w-8 h-8 text-purple-100" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 详细分析标签页 - 增加科目余额表分析 */}
+      <Tabs defaultValue="metrics" className="w-full">
+        <TabsList className="grid w-full grid-cols-7">
+          <TabsTrigger value="metrics">财务指标</TabsTrigger>
+          <TabsTrigger value="dupont">杜邦分析</TabsTrigger>
+          <TabsTrigger value="subject">科目分析</TabsTrigger>
+          <TabsTrigger value="structure">财务结构</TabsTrigger>
+          <TabsTrigger value="charts">数据可视化</TabsTrigger>
+          <TabsTrigger value="suggestions">分析建议</TabsTrigger>
+          <TabsTrigger value="ledger" className="relative">
+            审计
+            {financialData.ledgers.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center">
+                {financialData.ledgers.length}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        {/* 财务指标 */}
+        <TabsContent value="metrics" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <MetricCard
+              title="流动比率"
+              value={metrics.currentRatio}
+              description="衡量短期偿债能力，标准值为2"
+              trend={getMetricStatus(metrics.currentRatio, 'ratio').trend}
+              trendValue={getMetricStatus(metrics.currentRatio, 'ratio').status}
+              color="blue"
+            />
+            <MetricCard
+              title="速动比率"
+              value={metrics.quickRatio}
+              description="衡量即时偿债能力，标准值为1"
+              trend={getMetricStatus(metrics.quickRatio, 'ratio').trend}
+              trendValue={getMetricStatus(metrics.quickRatio, 'ratio').status}
+              color="teal"
+            />
+            <MetricCard
+              title="资产负债率"
+              value={metrics.debtToAssetRatio}
+              unit="%"
+              description="衡量长期偿债能力，适宜范围40%-60%"
+              trend={metrics.debtToAssetRatio > 60 ? 'down' : metrics.debtToAssetRatio < 40 ? 'up' : 'neutral'}
+              trendValue={metrics.debtToAssetRatio > 60 ? '偏高' : metrics.debtToAssetRatio < 40 ? '偏低' : '正常'}
+              color="purple"
+            />
+            <MetricCard
+              title="销售净利率"
+              value={metrics.netProfitMargin}
+              unit="%"
+              description="衡量盈利能力"
+              trend={getMetricStatus(metrics.netProfitMargin, 'percentage').trend}
+              trendValue={getMetricStatus(metrics.netProfitMargin, 'percentage').status}
+              color="green"
+            />
+            <MetricCard
+              title="净资产收益�?ROE"
+              value={metrics.roe}
+              unit="%"
+              description="衡量股东权益回报率"
+              trend={getMetricStatus(metrics.roe, 'percentage').trend}
+              trendValue={getMetricStatus(metrics.roe, 'percentage').status}
+              color="orange"
+            />
+            <MetricCard
+              title="总资产报酬率 ROA"
+              value={metrics.roa}
+              unit="%"
+              description="衡量资产使用效率"
+              trend={getMetricStatus(metrics.roa, 'percentage').trend}
+              trendValue={getMetricStatus(metrics.roa, 'percentage').status}
+              color="red"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <RadarChartComponent 
+              data={radarData} 
+              title="财务能力雷达图" 
+            />
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Calculator className="w-5 h-5" />
+                  指标说明
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-600">总资产周转率</span>
+                  <span className="font-medium">{metrics.totalAssetTurnover} 次</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-600">应收账款周转率</span>
+                  <span className="font-medium">{metrics.receivablesTurnover} 次</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-600">存货周转率</span>
+                  <span className="font-medium">{metrics.inventoryTurnover} 次</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-600">产权比率</span>
+                  <span className="font-medium">{metrics.equityRatio}</span>
+                </div>
+                <div className="flex justify-between py-2">
+                  <span className="text-gray-600">销售毛利率</span>
+                  <span className="font-medium">{metrics.grossProfitMargin}%</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* 杜邦分析 */}
+        <TabsContent value="dupont" className="space-y-6">
+          <Card className="border-2 border-blue-100">
+            <CardHeader>
+              <CardTitle className="text-xl flex items-center gap-2">
+                <GitBranch className="w-6 h-6 text-blue-600" />
+                杜邦分析体系
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* ROE 展示 */}
+              <div className="text-center p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl">
+                <p className="text-sm text-gray-600 mb-2">净资产收益�?(ROE)</p>
+                <p className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  {dupontData.roe}%
+                </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  = 销售净利率 × 总资产周转率 × 权益乘数
+                </p>
+              </div>
+
+              {/* 三个因素 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {dupontSteps.map((step, index) => (
+                  <Card key={index} className="bg-gray-50">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-gray-600">{step.title}</span>
+                        <span className="text-lg font-bold text-blue-600">{step.value}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-1">{step.desc}</p>
+                      <p className="text-xs text-gray-400 font-mono">{step.detail}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* 分析说明 */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-gray-800">杜邦分析解读</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <p className="font-medium text-blue-800 mb-2">盈利能力</p>
+                    <p className="text-blue-700">
+                      销售净利率 {dupontData.netProfitMargin}% 
+                      {dupontData.netProfitMargin > 10 ? '，盈利能力良好' : '，盈利能力有待提升'}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-green-50 rounded-lg">
+                    <p className="font-medium text-green-800 mb-2">运营效率</p>
+                    <p className="text-green-700">
+                      资产周转率 {dupontData.totalAssetTurnover}次
+                      {dupontData.totalAssetTurnover > 0.8 ? '，资产利用效率较高' : '，资产利用效率一般'}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-purple-50 rounded-lg">
+                    <p className="font-medium text-purple-800 mb-2">财务杠杆</p>
+                    <p className="text-purple-700">
+                      权益乘数 {dupontData.equityMultiplier}
+                      {dupontData.equityMultiplier > 2 ? '，财务杠杆较高' : '，财务杠杆适中'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 现金流分析卡�?*/}
+          {financialData.operatingCashflow !== 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-green-600" />
+                  现金流量分析
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 bg-green-50 rounded-lg">
+                    <p className="text-sm text-gray-600">经营活动现金流</p>
+                    <p className={`text-xl font-bold ${financialData.operatingCashflow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatCurrencyUniform(financialData.operatingCashflow)}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-gray-600">投资活动现金流</p>
+                    <p className={`text-xl font-bold ${financialData.investingCashflow >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                      {formatCurrencyUniform(financialData.investingCashflow)}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-purple-50 rounded-lg">
+                    <p className="text-sm text-gray-600">筹资活动现金流</p>
+                    <p className={`text-xl font-bold ${financialData.financingCashflow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatCurrencyUniform(financialData.financingCashflow)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* 科目分析 */}
+        <TabsContent value="subject" className="space-y-6">
+          {comparisonAnalysis.hasBeginningData && (
+            <Card className="border-blue-200">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-blue-600" />
+                  期末 vs 年初对比分析
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* 核心指标变动 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="p-4 bg-blue-50 rounded-lg text-center">
+                    <p className="text-sm text-gray-600">资产增长�?/p>
+                    <p className={`text-2xl font-bold ${comparisonAnalysis.metrics.assetGrowth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {comparisonAnalysis.metrics.assetGrowth > 0 ? '+' : ''}{comparisonAnalysis.metrics.assetGrowth}%
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formatCurrencyUniform(financialData.beginningTotalAssets)} �?{formatCurrencyUniform(financialData.totalAssets)}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-orange-50 rounded-lg text-center">
+                    <p className="text-sm text-gray-600">负债增长率</p>
+                    <p className={`text-2xl font-bold ${comparisonAnalysis.metrics.liabilityGrowth <= 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                      {comparisonAnalysis.metrics.liabilityGrowth > 0 ? '+' : ''}{comparisonAnalysis.metrics.liabilityGrowth}%
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formatCurrencyUniform(financialData.beginningTotalLiabilities)} �?{formatCurrencyUniform(financialData.totalLiabilities)}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-purple-50 rounded-lg text-center">
+                    <p className="text-sm text-gray-600">权益增长�?/p>
+                    <p className={`text-2xl font-bold ${comparisonAnalysis.metrics.equityGrowth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {comparisonAnalysis.metrics.equityGrowth > 0 ? '+' : ''}{comparisonAnalysis.metrics.equityGrowth}%
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formatCurrencyUniform(financialData.beginningTotalEquity)} �?{formatCurrencyUniform(financialData.totalEquity)}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-green-50 rounded-lg text-center">
+                    <p className="text-sm text-gray-600">现金变动</p>
+                    <p className={`text-2xl font-bold ${comparisonAnalysis.metrics.cashChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {comparisonAnalysis.metrics.cashChange > 0 ? '+' : ''}{formatCurrencyUniform(comparisonAnalysis.metrics.cashChange)}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {comparisonAnalysis.metrics.cashChangePercent > 0 ? '+' : ''}{comparisonAnalysis.metrics.cashChangePercent}%
+                    </p>
+                  </div>
+                </div>
+
+                {/* 趋势评估 */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="p-3 bg-gray-50 rounded-lg text-center">
+                    <p className="text-xs text-gray-500">资产规模</p>
+                    <p className="text-sm font-medium">
+                      {comparisonAnalysis.trends.assetTrend === 'expansion' ? '📈 扩张' :
+                       comparisonAnalysis.trends.assetTrend === 'contraction' ? '📉 收缩' : '➡️ 稳定'}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-lg text-center">
+                    <p className="text-xs text-gray-500">负债水�?/p>
+                    <p className="text-sm font-medium">
+                      {comparisonAnalysis.trends.liabilityTrend === 'increasing' ? '📈 上升' :
+                       comparisonAnalysis.trends.liabilityTrend === 'decreasing' ? '📉 下降' : '➡️ 稳定'}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-lg text-center">
+                    <p className="text-xs text-gray-500">流动�?/p>
+                    <p className="text-sm font-medium">
+                      {comparisonAnalysis.trends.liquidityTrend === 'improving' ? '�?改善' :
+                       comparisonAnalysis.trends.liquidityTrend === 'deteriorating' ? '⚠️ 恶化' : '➡️ 稳定'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 重大变动科目 */}
+                {comparisonAnalysis.significantChanges.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">重大变动科目</h4>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {comparisonAnalysis.significantChanges.map((change, index) => (
+                        <div key={index} className={`p-3 rounded-lg ${
+                          change.significance === 'high' ? 'bg-red-50 border border-red-200' :
+                          change.significance === 'medium' ? 'bg-orange-50 border border-orange-200' :
+                          'bg-blue-50 border border-blue-200'
+                        }`}>
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium text-gray-900">{change.subject}</p>
+                              <p className="text-xs text-gray-500">
+                                {formatCurrencyUniform(change.previousValue)} �?{formatCurrencyUniform(change.currentValue)}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-sm font-bold ${change.direction === 'increase' ? 'text-red-600' : 'text-green-600'}`}>
+                                {change.direction === 'increase' ? '�? : '�?} {Math.abs(change.changePercent).toFixed(1)}%
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {change.changeAmount > 0 ? '+' : ''}{formatCurrencyUniform(change.changeAmount)}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-600 mt-1">{change.analysis}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 风险预警与机�?*/}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {comparisonAnalysis.riskAlerts.length > 0 && (
+                    <div className="p-4 bg-red-50 rounded-lg">
+                      <h4 className="text-sm font-medium text-red-800 mb-2">⚠️ 风险预警</h4>
+                      <div className="space-y-1">
+                        {comparisonAnalysis.riskAlerts.map((alert, index) => (
+                          <p key={index} className="text-xs text-red-700">{alert}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {comparisonAnalysis.opportunities.length > 0 && (
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <h4 className="text-sm font-medium text-green-800 mb-2">�?正面发现</h4>
+                      <div className="space-y-1">
+                        {comparisonAnalysis.opportunities.map((opp, index) => (
+                          <p key={index} className="text-xs text-green-700">{opp}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 资产质量分析 -->
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Scale className="w-5 h-5 text-blue-600" />
+                资产质量分析
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className="p-4 bg-blue-50 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">现金占比</p>
+                  <p className="text-2xl font-bold text-blue-600">{subjectAnalysis.assetQuality.cashRatio}%</p>
+                </div>
+                <div className="p-4 bg-orange-50 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">应收账款占比</p>
+                  <p className="text-2xl font-bold text-orange-600">{subjectAnalysis.assetQuality.receivablesRatio}%</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">存货占比</p>
+                  <p className="text-2xl font-bold text-green-600">{subjectAnalysis.assetQuality.inventoryRatio}%</p>
+                </div>
+                <div className="p-4 bg-purple-50 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">非流动资产占�?/p>
+                  <p className="text-2xl font-bold text-purple-600">{subjectAnalysis.assetQuality.fixedAssetsRatio}%</p>
+                </div>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium">评估结论�?/span>{subjectAnalysis.assetQuality.assessment}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 流动性与往来款�?*/}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-green-600" />
+                  流动性分�?
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-600">现金及银行存�?/span>
+                  <span className="font-medium">{formatCurrencyUniform(subjectAnalysis.liquidity.cashAmount)}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-600">速动资产</span>
+                  <span className="font-medium">{formatCurrencyUniform(subjectAnalysis.liquidity.quickAssets)}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-600">流动资产</span>
+                  <span className="font-medium">{formatCurrencyUniform(subjectAnalysis.liquidity.currentAssets)}</span>
+                </div>
+                <div className="p-3 bg-green-50 rounded-lg text-sm text-green-800">
+                  {subjectAnalysis.liquidity.assessment}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Search className="w-5 h-5 text-orange-600" />
+                  往来款项分�?
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-600">应收账款总额</span>
+                  <span className="font-medium text-orange-600">{formatCurrencyUniform(subjectAnalysis.receivablesPayables.totalReceivables)}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-600">应付账款总额</span>
+                  <span className="font-medium text-blue-600">{formatCurrencyUniform(subjectAnalysis.receivablesPayables.totalPayables)}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-600">应收净�?/span>
+                  <span className={`font-medium ${subjectAnalysis.receivablesPayables.netReceivables > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {formatCurrencyUniform(subjectAnalysis.receivablesPayables.netReceivables)}
+                  </span>
+                </div>
+                <div className="p-3 bg-orange-50 rounded-lg text-sm text-orange-800">
+                  {subjectAnalysis.receivablesPayables.collectionRisk}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* 存货深度分析 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <PieChart className="w-5 h-5 text-purple-600" />
+                存货深度分析
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className="p-4 bg-purple-50 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">存货总额</p>
+                  <p className="text-xl font-bold text-purple-600">{formatCurrencyUniform(subjectAnalysis.inventory.totalInventory)}</p>
+                </div>
+                <div className="p-4 bg-blue-50 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">年周转率</p>
+                  <p className="text-xl font-bold text-blue-600">{subjectAnalysis.inventory.inventoryTurnover}�?/p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">周转天数</p>
+                  <p className="text-xl font-bold text-green-600">{subjectAnalysis.inventory.inventoryDays}�?/p>
+                </div>
+                <div className="p-4 bg-orange-50 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">占资产比</p>
+                  <p className="text-xl font-bold text-orange-600">{((subjectAnalysis.inventory.totalInventory / summary.totalAssets) * 100).toFixed(1)}%</p>
+                </div>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg mb-4">
+                <p className="text-sm text-gray-700 mb-2">
+                  <span className="font-medium">风险评估�?/span>{subjectAnalysis.inventory.riskLevel}
+                </p>
+                <p className="text-sm text-gray-600">{subjectAnalysis.inventory.obsolescenceRisk}</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 bg-blue-50 rounded">
+                  <p className="text-xs text-gray-500">原材�?/p>
+                  <p className="text-sm font-medium">{formatCurrencyUniform(subjectAnalysis.inventory.rawMaterials)}</p>
+                </div>
+                <div className="p-2 bg-yellow-50 rounded">
+                  <p className="text-xs text-gray-500">在产�?/p>
+                  <p className="text-sm font-medium">{formatCurrencyUniform(subjectAnalysis.inventory.workInProgress)}</p>
+                </div>
+                <div className="p-2 bg-green-50 rounded">
+                  <p className="text-xs text-gray-500">产成�?/p>
+                  <p className="text-sm font-medium">{formatCurrencyUniform(subjectAnalysis.inventory.finishedGoods)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+
+
+          {/* 资金占用与舞弊风�?*/}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <TrendingDown className="w-5 h-5 text-red-600" />
+                资金占用与舞弊风险分�?
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="p-4 bg-orange-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-1">其他应收款占资产�?/p>
+                  <p className={`text-2xl font-bold ${subjectAnalysis.fundOccupation.otherReceivablesRatio > 5 ? 'text-red-600' : 'text-orange-600'}`}>
+                    {subjectAnalysis.fundOccupation.otherReceivablesRatio}%
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {subjectAnalysis.fundOccupation.otherReceivablesRatio > 10 ? '⚠️ 严重偏高，可能存在资金占�? :
+                     subjectAnalysis.fundOccupation.otherReceivablesRatio > 5 ? '⚠️ 偏高，需关注' : '�?正常范围'}
+                  </p>
+                </div>
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-1">其他应付款占负债比</p>
+                  <p className={`text-2xl font-bold ${subjectAnalysis.fundOccupation.otherPayablesRatio > 15 ? 'text-red-600' : 'text-blue-600'}`}>
+                    {subjectAnalysis.fundOccupation.otherPayablesRatio}%
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {subjectAnalysis.fundOccupation.otherPayablesRatio > 20 ? '⚠️ 异常偏高，可能存在隐藏负�? :
+                     subjectAnalysis.fundOccupation.otherPayablesRatio > 10 ? '需关注' : '�?正常范围'}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <p className="text-sm font-medium text-gray-700">关联方资金往�?/p>
+                  <p className="text-sm text-gray-600 mt-1">{subjectAnalysis.fundOccupation.relatedPartyFundFlow}</p>
+                </div>
+                <div className="p-3 bg-yellow-50 rounded-lg">
+                  <p className="text-sm font-medium text-gray-700">利润调节风险</p>
+                  <p className="text-sm text-gray-600 mt-1">{subjectAnalysis.fundOccupation.profitManipulationRisk}</p>
+                </div>
+                <div className="p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm font-medium text-gray-700">综合评估</p>
+                  <p className="text-sm text-gray-600 mt-1">{subjectAnalysis.fundOccupation.assessment}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 科目分析综合建议 -->
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Lightbulb className="w-5 h-5 text-yellow-500" />
+                科目余额表分析建�?
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {subjectSuggestions.map((suggestion, index) => (
+                  <div key={index} className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                      <span className="text-xs font-medium text-blue-600">{index + 1}</span>
+                    </div>
+                    <p className="text-sm text-gray-700">{suggestion}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* 财务结构 */}
+        <TabsContent value="structure" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <FinancialStructureChart
+              assets={summary.totalAssets}
+              liabilities={summary.totalLiabilities}
+              equity={summary.totalEquity}
+            />
+            <IncomeExpenseChart
+              income={summary.totalIncome}
+              expenses={summary.totalExpenses}
+              netProfit={summary.netProfit}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">资产明细</CardTitle>
+                {financialData.hasBeginningData && (
+                  <p className="text-xs text-gray-500">期末 vs 年初对比</p>
+                )}
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {Array.from(financialData.assets.entries())
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 10)
+                    .map(([name, value], index) => {
+                      const beginningValue = financialData.beginningAssets.get(name) || 0;
+                      const change = beginningValue > 0 ? ((value - beginningValue) / beginningValue) * 100 : 0;
+                      return (
+                        <div key={index} className="py-2 border-b">
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600">{name}</span>
+                            <span className="text-sm font-medium">{formatCurrencyUniform(value)}</span>
+                          </div>
+                          {financialData.hasBeginningData && beginningValue > 0 && (
+                            <div className="flex justify-between text-xs mt-1">
+                              <span className="text-gray-400">年初: {formatCurrencyUniform(beginningValue)}</span>
+                              <span className={change >= 0 ? 'text-red-500' : 'text-green-500'}>
+                                {change >= 0 ? '�? : '�?} {Math.abs(change).toFixed(1)}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+                <div className="flex justify-between py-3 mt-2 bg-blue-50 rounded-lg px-3">
+                  <span className="text-sm font-bold text-blue-800">合计</span>
+                  <div className="text-right">
+                    <span className="text-sm font-bold text-blue-800">{formatCurrencyUniform(summary.totalAssets)}</span>
+                    {financialData.hasBeginningData && financialData.beginningTotalAssets > 0 && (
+                      <p className="text-xs text-gray-500">
+                        年初: {formatCurrencyUniform(financialData.beginningTotalAssets)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">负债明�?/CardTitle>
+                {financialData.hasBeginningData && (
+                  <p className="text-xs text-gray-500">期末 vs 年初对比</p>
+                )}
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {Array.from(financialData.liabilities.entries())
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 10)
+                    .map(([name, value], index) => {
+                      const beginningValue = financialData.beginningLiabilities.get(name) || 0;
+                      const change = beginningValue > 0 ? ((value - beginningValue) / beginningValue) * 100 : 0;
+                      return (
+                        <div key={index} className="py-2 border-b">
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600">{name}</span>
+                            <span className="text-sm font-medium">{formatCurrencyUniform(value)}</span>
+                          </div>
+                          {financialData.hasBeginningData && beginningValue > 0 && (
+                            <div className="flex justify-between text-xs mt-1">
+                              <span className="text-gray-400">年初: {formatCurrencyUniform(beginningValue)}</span>
+                              <span className={change >= 0 ? 'text-red-500' : 'text-green-500'}>
+                                {change >= 0 ? '�? : '�?} {Math.abs(change).toFixed(1)}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+                <div className="flex justify-between py-3 mt-2 bg-red-50 rounded-lg px-3">
+                  <span className="text-sm font-bold text-red-800">合计</span>
+                  <div className="text-right">
+                    <span className="text-sm font-bold text-red-800">{formatCurrencyUniform(summary.totalLiabilities)}</span>
+                    {financialData.hasBeginningData && financialData.beginningTotalLiabilities > 0 && (
+                      <p className="text-xs text-gray-500">
+                        年初: {formatCurrencyUniform(financialData.beginningTotalLiabilities)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* 收入费用明细 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">收入明细</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {Array.from(financialData.income.entries())
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 10)
+                    .map(([name, value], index) => (
+                      <div key={index} className="flex justify-between py-2 border-b">
+                        <span className="text-sm text-gray-600">{name}</span>
+                        <span className="text-sm font-medium">{formatCurrencyUniform(value)}</span>
+                      </div>
+                    ))}
+                </div>
+                <div className="flex justify-between py-3 mt-2 bg-green-50 rounded-lg px-3">
+                  <span className="text-sm font-bold text-green-800">合计</span>
+                  <span className="text-sm font-bold text-green-800">{formatCurrencyUniform(summary.totalIncome)}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">费用明细</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {Array.from(financialData.expenses.entries())
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 10)
+                    .map(([name, value], index) => (
+                      <div key={index} className="flex justify-between py-2 border-b">
+                        <span className="text-sm text-gray-600">{name}</span>
+                        <span className="text-sm font-medium">{formatCurrencyUniform(value)}</span>
+                      </div>
+                    ))}
+                </div>
+                <div className="flex justify-between py-3 mt-2 bg-orange-50 rounded-lg px-3">
+                  <span className="text-sm font-bold text-orange-800">合计</span>
+                  <span className="text-sm font-bold text-orange-800">{formatCurrencyUniform(summary.totalExpenses)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* 数据可视�?*/}
+        <TabsContent value="charts" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <PieChartComponent 
+              data={assetDistributionData} 
+              title="资产分布" 
+            />
+            <PieChartComponent 
+              data={liabilityDistributionData} 
+              title="负债分�? 
+            />
+          </div>
+          
+          <BarChartComponent
+            data={[
+              { name: '资产', value: Math.abs(summary.totalAssets) },
+              { name: '负�?, value: Math.abs(summary.totalLiabilities) },
+              { name: '权益', value: Math.abs(summary.totalEquity) },
+            ]}
+            title="资产负债表对比"
+            color="#667eea"
+          />
+        </TabsContent>
+
+        {/* 分析建议 - 综合文字分析 */}
+        <TabsContent value="suggestions" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Lightbulb className="w-5 h-5 text-yellow-500" />
+                综合分析与建�?
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* 经营概况 */}
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <h4 className="font-semibold text-blue-800 mb-2">📊 经营概况</h4>
+                <p className="text-blue-700 text-sm leading-relaxed">
+                  {summary.netProfit > 0 
+                    ? `公司本期实现净利润${formatCurrencyUniform(summary.netProfit)}，经营状况良好。`
+                    : `公司本期出现亏损${formatCurrencyUniform(Math.abs(summary.netProfit))}，需要关注经营风险。`
+                  }
+                  {summary.totalIncome > 0 && `营业收入达到${formatCurrencyUniform(summary.totalIncome)}，`}
+                  {metrics.netProfitMargin > 10 
+                    ? `盈利能力较强（净利率${metrics.netProfitMargin}%）。` 
+                    : metrics.netProfitMargin > 0 
+                      ? `盈利能力一般（净利率${metrics.netProfitMargin}%）。`
+                      : `盈利能力较弱，需要优化成本结构。`
+                  }
+                </p>
+              </div>
+
+              {/* 财务状况 */}
+              <div className="p-4 bg-green-50 rounded-lg">
+                <h4 className="font-semibold text-green-800 mb-2">💰 财务状况</h4>
+                <p className="text-green-700 text-sm leading-relaxed">
+                  资产总额{formatCurrencyUniform(summary.totalAssets)}，负债总额{formatCurrencyUniform(summary.totalLiabilities)}�?
+                  所有者权益{formatCurrencyUniform(summary.totalEquity)}�?
+                  {metrics.debtToAssetRatio < 50 
+                    ? `资产负债率${metrics.debtToAssetRatio}%处于较低水平，财务结构稳健。`
+                    : metrics.debtToAssetRatio < 70
+                      ? `资产负债率${metrics.debtToAssetRatio}%处于合理区间。`
+                      : `资产负债率${metrics.debtToAssetRatio}%偏高，财务杠杆较大。`
+                  }
+                  {metrics.currentRatio > 2 
+                    ? `流动比率${metrics.currentRatio}显示短期偿债能力强。`
+                    : metrics.currentRatio > 1
+                      ? `流动比率${metrics.currentRatio}显示短期偿债能力尚可。`
+                      : `流动比率${metrics.currentRatio}偏低，需要关注短期偿债压力。`
+                  }
+                </p>
+              </div>
+
+              {/* 运营效率 */}
+              <div className="p-4 bg-purple-50 rounded-lg">
+                <h4 className="font-semibold text-purple-800 mb-2">�?运营效率</h4>
+                <p className="text-purple-700 text-sm leading-relaxed">
+                  {metrics.roe > 15 
+                    ? `净资产收益�?ROE)�?{metrics.roe}%，股东回报表现优秀。`
+                    : metrics.roe > 8
+                      ? `净资产收益�?ROE)�?{metrics.roe}%，股东回报处于合理水平。`
+                      : `净资产收益�?ROE)�?{metrics.roe}%，股东回报有待提升。`
+                  }
+                  {metrics.roa > 5 
+                    ? `总资产报酬率(ROA)�?{metrics.roa}%，资产利用效率较高。`
+                    : `总资产报酬率(ROA)�?{metrics.roa}%，资产利用效率一般。`
+                  }
+                </p>
+              </div>
+
+              {/* 风险提示 */}
+              {(metrics.currentRatio < 1.5 || metrics.debtToAssetRatio > 70 || metrics.netProfitMargin < 0) && (
+                <div className="p-4 bg-orange-50 rounded-lg">
+                  <h4 className="font-semibold text-orange-800 mb-2">⚠️ 风险提示</h4>
+                  <ul className="text-orange-700 text-sm space-y-1">
+                    {metrics.currentRatio < 1.5 && (
+                      <li>�?流动比率偏低，短期偿债能力存在压力，建议加强现金流管�?/li>
+                    )}
+                    {metrics.debtToAssetRatio > 70 && (
+                      <li>�?资产负债率偏高，财务风险较大，建议优化资本结构</li>
+                    )}
+                    {metrics.netProfitMargin < 0 && (
+                      <li>�?销售净利率为负，主营业务盈利能力不足，建议控制成本或调整定价策�?/li>
+                    )}
+                  </ul>
+                </div>
+              )}
+
+              {/* 管理建议 */}
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-semibold text-gray-800 mb-2">💡 管理建议</h4>
+                <ul className="text-gray-700 text-sm space-y-1">
+                  {metrics.currentRatio < 2 && (
+                    <li>�?加强应收账款管理，加快资金回笼，提高流动比率</li>
+                  )}
+                  {metrics.debtToAssetRatio > 60 && (
+                    <li>�?适当控制负债规模，降低财务杠杆，优化资本结�?/li>
+                  )}
+                  {metrics.netProfitMargin < 10 && (
+                    <li>�?优化成本结构，提升产品毛利率，增强盈利能�?/li>
+                  )}
+                  {metrics.roe < 15 && (
+                    <li>�?提高资产周转效率，增强股东回报水�?/li>
+                  )}
+                  <li>�?建立健全的财务风险预警机制，定期进行财务健康度检�?/li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* 审计 - 包含重点科目核查和明细账 */}
+        <TabsContent value="ledger" className="space-y-6">
+          {/* 重点科目核查 */}
+          {subjectAnalysis.keySubjects.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-blue-600" />
+                  重点科目核查（审计视角）
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {subjectAnalysis.keySubjects.map((subject, index) => (
+                    <div key={index} className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">{subject.subject}</span>
+                          <span className={`px-2 py-0.5 text-xs rounded ${
+                            subject.riskLevel === 'high' ? 'bg-red-100 text-red-700' :
+                            subject.riskLevel === 'medium' ? 'bg-orange-100 text-orange-700' :
+                            'bg-green-100 text-green-700'
+                          }`}>
+                            {subject.riskLevel === 'high' ? '高风�? : subject.riskLevel === 'medium' ? '中风�? : '低风�?}
+                          </span>
+                        </div>
+                        <span className="font-bold text-gray-900">{formatCurrencyUniform(subject.balance)}</span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm text-gray-600">
+                          {subject.keyPoints.map((point, i) => (
+                            <p key={i} className="flex items-start gap-1">
+                              <span className="text-blue-500 mt-1">�?/span>
+                              {point}
+                            </p>
+                          ))}
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-gray-200">
+                          <p className="text-xs font-medium text-gray-500 mb-1">审计建议�?/p>
+                          <div className="text-sm text-gray-600">
+                            {subject.recommendations.map((rec, i) => (
+                              <p key={i} className="flex items-start gap-1">
+                                <Target className="w-3 h-3 text-green-500 mt-0.5 flex-shrink-0" />
+                                {rec}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 异常检测与税务风险 */}
+          {subjectAnalysis.anomalies.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <AlertOctagon className="w-5 h-5 text-red-500" />
+                  异常检测（审计级）
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {subjectAnalysis.anomalies.map((anomaly, index) => (
+                    <div 
+                      key={index} 
+                      className={`p-4 rounded-lg ${
+                        anomaly.type === 'critical' ? 'bg-red-50 border border-red-300' :
+                        anomaly.type === 'error' ? 'bg-red-50 border border-red-200' : 
+                        anomaly.type === 'warning' ? 'bg-orange-50 border border-orange-200' : 
+                        'bg-blue-50 border border-blue-200'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {anomaly.type === 'critical' ? (
+                          <AlertOctagon className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                        ) : anomaly.type === 'error' ? (
+                          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                        ) : anomaly.type === 'warning' ? (
+                          <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+                        ) : (
+                          <CheckCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                        )}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-gray-900">{anomaly.subject}</p>
+                            {anomaly.type === 'critical' && (
+                              <span className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded">严重</span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-700 mt-1 font-medium">{anomaly.message}</p>
+                          {anomaly.detail && (
+                            <p className="text-sm text-gray-500 mt-1">{anomaly.detail}</p>
+                          )}
+                          <p className="text-sm text-blue-600 mt-2">
+                            <span className="font-medium">💡 建议�?/span>{anomaly.suggestion}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 税务风险预警 */}
+          {subjectAnalysis.taxRisks.length > 0 && (
+            <Card className="border-red-200">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-red-600" />
+                  税务风险预警
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {subjectAnalysis.taxRisks.map((risk, index) => (
+                    <div key={index} className="p-4 bg-red-50 rounded-lg">
+                      <p className="font-medium text-red-800">{risk.type}</p>
+                      <p className="text-sm text-red-700 mt-1">{risk.risk}</p>
+                      <p className="text-sm text-red-600 mt-1">
+                        <span className="font-medium">应对建议�?/span>{risk.suggestion}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 审计程序建议 */}
+          {subjectAnalysis.auditSuggestions.length > 0 && (
+            <Card className="border-blue-200">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-blue-600" />
+                  审计程序建议
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {subjectAnalysis.auditSuggestions.map((suggestion, index) => (
+                    <div key={index} className={`p-3 rounded-lg ${
+                      suggestion.includes('【紧急�?) ? 'bg-red-50 border border-red-200' :
+                      suggestion.includes('【税务合规�?) ? 'bg-orange-50 border border-orange-200' :
+                      suggestion.includes('【内控建议�?) ? 'bg-blue-50 border border-blue-200' :
+                      'bg-gray-50'
+                    }`}>
+                      <p className="text-sm text-gray-700">{suggestion.replace(/�?*?�?, '')}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 明细分类�?*/}
+          {financialData.ledgers.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  明细分类账分�?
+                  <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                    {financialData.ledgers.length}个科�?
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <LedgerViewer ledgers={financialData.ledgers} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 无明细账时的提示 */}
+          {financialData.ledgers.length === 0 && (
+            <Card className="bg-gray-50">
+              <CardContent className="p-8 text-center">
+                <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                <p className="text-gray-500">未检测到明细分类账数�?/p>
+                <p className="text-sm text-gray-400 mt-2">如需查看明细账，请确保Excel文件中包�?明细分类�?工作�?/p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 财务概要信息�?*/}
+          {financialData.financialSummary && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-blue-600" />
+                  财务概要信息
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* 盈利状况 */}
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <h4 className="font-medium text-blue-800 mb-3">盈利状况</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {financialData.financialSummary.revenue && (
+                        <div>
+                          <p className="text-xs text-gray-500">营业收入</p>
+                          <p className="font-medium">{formatCurrencyUniform(financialData.financialSummary.revenue.currentPeriodAmount)}</p>
+                          {financialData.financialSummary.revenue.currentPeriodChange !== 0 && (
+                            <p className={`text-xs ${financialData.financialSummary.revenue.currentPeriodChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {financialData.financialSummary.revenue.currentPeriodChange > 0 ? '�? : '�?} {Math.abs(financialData.financialSummary.revenue.currentPeriodChange).toFixed(1)}%
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {financialData.financialSummary.netProfit && (
+                        <div>
+                          <p className="text-xs text-gray-500">净利润</p>
+                          <p className={`font-medium ${financialData.financialSummary.netProfit.currentPeriodAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrencyUniform(financialData.financialSummary.netProfit.currentPeriodAmount)}
+                          </p>
+                        </div>
+                      )}
+                      {financialData.financialSummary.netProfitMargin && (
+                        <div>
+                          <p className="text-xs text-gray-500">净利率</p>
+                          <p className="font-medium">{financialData.financialSummary.netProfitMargin.currentPeriodAmount.toFixed(2)}%</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 三项费用 */}
+                  <div className="p-4 bg-orange-50 rounded-lg">
+                    <h4 className="font-medium text-orange-800 mb-3">三项费用</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {financialData.financialSummary.adminExpense && (
+                        <div>
+                          <p className="text-xs text-gray-500">管理费用</p>
+                          <p className="font-medium">{formatCurrencyUniform(financialData.financialSummary.adminExpense.currentPeriodAmount)}</p>
+                        </div>
+                      )}
+                      {financialData.financialSummary.salesExpense && (
+                        <div>
+                          <p className="text-xs text-gray-500">销售费�?/p>
+                          <p className="font-medium">{formatCurrencyUniform(financialData.financialSummary.salesExpense.currentPeriodAmount)}</p>
+                        </div>
+                      )}
+                      {financialData.financialSummary.financeExpense && (
+                        <div>
+                          <p className="text-xs text-gray-500">财务费用</p>
+                          <p className="font-medium">{formatCurrencyUniform(financialData.financialSummary.financeExpense.currentPeriodAmount)}</p>
+                        </div>
+                      )}
+                      {financialData.financialSummary.expenseRatio && (
+                        <div>
+                          <p className="text-xs text-gray-500">费用比率</p>
+                          <p className="font-medium">{financialData.financialSummary.expenseRatio.currentPeriodAmount.toFixed(1)}%</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 资金状况 */}
+                  {financialData.financialSummary.fundBalance && (
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <h4 className="font-medium text-green-800 mb-3">资金状况</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-xs text-gray-500">资金收入</p>
+                          <p className="font-medium text-green-600">{formatCurrencyUniform(financialData.financialSummary.fundInflow?.currentPeriodAmount || 0)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">资金支付</p>
+                          <p className="font-medium text-red-600">{formatCurrencyUniform(financialData.financialSummary.fundOutflow?.currentPeriodAmount || 0)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">资金净�?/p>
+                          <p className={`font-medium ${financialData.financialSummary.fundBalance.currentPeriodAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrencyUniform(financialData.financialSummary.fundBalance.currentPeriodAmount)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 账龄分析�?*/}
+          {financialData.agingAnalysis && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-blue-600" />
+                  账龄分析 - {financialData.agingAnalysis.subjectName}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* 账龄分布图表 */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">账龄分布</h4>
+                  <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
+                    <div className="p-3 bg-green-50 rounded-lg text-center">
+                      <p className="text-xs text-gray-500">30天以�?/p>
+                      <p className="font-medium text-green-700">{formatCurrencyUniform(financialData.agingAnalysis.totalDays0_30)}</p>
+                      <p className="text-xs text-gray-400">{financialData.agingAnalysis.totalEnding > 0 ? ((financialData.agingAnalysis.totalDays0_30 / financialData.agingAnalysis.totalEnding) * 100).toFixed(1) : 0}%</p>
+                    </div>
+                    <div className="p-3 bg-blue-50 rounded-lg text-center">
+                      <p className="text-xs text-gray-500">30-60�?/p>
+                      <p className="font-medium text-blue-700">{formatCurrencyUniform(financialData.agingAnalysis.totalDays30_60)}</p>
+                      <p className="text-xs text-gray-400">{financialData.agingAnalysis.totalEnding > 0 ? ((financialData.agingAnalysis.totalDays30_60 / financialData.agingAnalysis.totalEnding) * 100).toFixed(1) : 0}%</p>
+                    </div>
+                    <div className="p-3 bg-yellow-50 rounded-lg text-center">
+                      <p className="text-xs text-gray-500">60-90�?/p>
+                      <p className="font-medium text-yellow-700">{formatCurrencyUniform(financialData.agingAnalysis.totalDays60_90)}</p>
+                      <p className="text-xs text-gray-400">{financialData.agingAnalysis.totalEnding > 0 ? ((financialData.agingAnalysis.totalDays60_90 / financialData.agingAnalysis.totalEnding) * 100).toFixed(1) : 0}%</p>
+                    </div>
+                    <div className="p-3 bg-orange-50 rounded-lg text-center">
+                      <p className="text-xs text-gray-500">90-180�?/p>
+                      <p className="font-medium text-orange-700">{formatCurrencyUniform(financialData.agingAnalysis.totalDays90_180)}</p>
+                      <p className="text-xs text-gray-400">{financialData.agingAnalysis.totalEnding > 0 ? ((financialData.agingAnalysis.totalDays90_180 / financialData.agingAnalysis.totalEnding) * 100).toFixed(1) : 0}%</p>
+                    </div>
+                    <div className="p-3 bg-red-50 rounded-lg text-center">
+                      <p className="text-xs text-gray-500">180-360�?/p>
+                      <p className="font-medium text-red-700">{formatCurrencyUniform(financialData.agingAnalysis.totalDays180_360)}</p>
+                      <p className="text-xs text-gray-400">{financialData.agingAnalysis.totalEnding > 0 ? ((financialData.agingAnalysis.totalDays180_360 / financialData.agingAnalysis.totalEnding) * 100).toFixed(1) : 0}%</p>
+                    </div>
+                    <div className="p-3 bg-red-100 rounded-lg text-center">
+                      <p className="text-xs text-gray-500">360-1080�?/p>
+                      <p className="font-medium text-red-800">{formatCurrencyUniform(financialData.agingAnalysis.totalDays360_1080)}</p>
+                      <p className="text-xs text-gray-400">{financialData.agingAnalysis.totalEnding > 0 ? ((financialData.agingAnalysis.totalDays360_1080 / financialData.agingAnalysis.totalEnding) * 100).toFixed(1) : 0}%</p>
+                    </div>
+                    <div className="p-3 bg-red-200 rounded-lg text-center">
+                      <p className="text-xs text-gray-500">1080天以�?/p>
+                      <p className="font-medium text-red-900">{formatCurrencyUniform(financialData.agingAnalysis.totalDays1080plus)}</p>
+                      <p className="text-xs text-gray-400">{financialData.agingAnalysis.totalEnding > 0 ? ((financialData.agingAnalysis.totalDays1080plus / financialData.agingAnalysis.totalEnding) * 100).toFixed(1) : 0}%</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 风险分析 */}
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">风险分析</h4>
+                  <p className="text-sm text-gray-600 mb-2">{financialData.agingAnalysis.analysis.riskAssessment}</p>
+                  <p className="text-sm text-gray-500">
+                    长期应收款（180天以上）占比: <span className={`font-medium ${financialData.agingAnalysis.analysis.longTermReceivablesRatio > 30 ? 'text-red-600' : financialData.agingAnalysis.analysis.longTermReceivablesRatio > 15 ? 'text-orange-600' : 'text-green-600'}`}>{financialData.agingAnalysis.analysis.longTermReceivablesRatio}%</span>
+                  </p>
+                  {financialData.agingAnalysis.analysis.highRiskAmount > 0 && (
+                    <p className="text-sm text-red-600 mt-1">
+                      ⚠️ 高风险金额（360天以上）: {formatCurrencyUniform(financialData.agingAnalysis.analysis.highRiskAmount)}
+                    </p>
+                  )}
+                </div>
+
+                {/* 建议 */}
+                {financialData.agingAnalysis.analysis.suggestions.length > 0 && (
+                  <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                    <h4 className="text-sm font-medium text-blue-800 mb-2">管理建议</h4>
+                    <ul className="text-sm text-blue-700 space-y-1">
+                      {financialData.agingAnalysis.analysis.suggestions.map((suggestion, index) => (
+                        <li key={index}>�?{suggestion}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
+export default AnalysisResultComponent;
