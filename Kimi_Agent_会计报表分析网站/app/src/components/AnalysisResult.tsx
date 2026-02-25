@@ -1,4 +1,5 @@
 // 简化的AnalysisResult组件 - 由于原文件编码损坏，这是修复版本
+import React from 'react';
 import { TrendingUp, AlertTriangle, CheckCircle, FileText, PieChart, BarChart3, Activity } from 'lucide-react';
 import type { AnalysisResult as AnalysisResultType, ChartData } from '@/types/accounting';
 import { formatCurrencyUniform, type FinancialData, type DupontAnalysis } from '@/utils/excelParser';
@@ -20,6 +21,10 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
   dupontData 
 }) => {
   const { metrics, summary } = result;
+  
+  // 状态管理：当前标签页和要展开的明细账科目
+  const [activeTab, setActiveTab] = React.useState('metrics');
+  const [expandedLedger, setExpandedLedger] = React.useState<string | null>(null);
 
   const getMetricStatus = (value: number, type: 'ratio' | 'percentage') => {
     if (type === 'ratio') {
@@ -76,7 +81,7 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
       </div>
 
       {/* 详细分析标签页 */}
-      <Tabs defaultValue="metrics" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="metrics">财务指标</TabsTrigger>
           <TabsTrigger value="dupont">杜邦分析</TabsTrigger>
@@ -187,21 +192,13 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
 
         {/* 科目分析 */}
         <TabsContent value="subject" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-blue-600" />
-                科目余额表分析
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600">资产总计: {formatCurrencyUniform(summary.totalAssets)}</p>
-              <p className="text-gray-600">负债总计: {formatCurrencyUniform(summary.totalLiabilities)}</p>
-              <p className="text-gray-600">权益总计: {formatCurrencyUniform(summary.totalEquity)}</p>
-              <p className="text-gray-600">营业收入: {formatCurrencyUniform(summary.totalIncome)}</p>
-              <p className="text-gray-600">净利润: {formatCurrencyUniform(summary.netProfit)}</p>
-            </CardContent>
-          </Card>
+          <SubjectAnalysisTab 
+            financialData={financialData} 
+            onViewLedger={(subjectName) => {
+              setExpandedLedger(subjectName);
+              setActiveTab('ledger');
+            }}
+          />
         </TabsContent>
 
         {/* 财务结构 */}
@@ -302,7 +299,11 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
 
         {/* 明细账 */}
         <TabsContent value="ledger" className="space-y-6">
-          <LedgerDetailTab financialData={financialData} />
+          <LedgerDetailTab 
+            financialData={financialData} 
+            expandedSubject={expandedLedger}
+            onExpandChange={setExpandedLedger}
+          />
         </TabsContent>
 
         {/* 审计 */}
@@ -437,13 +438,135 @@ const ChartsTab: React.FC<ChartsTabProps> = ({ financialData, metrics }) => {
   );
 };
 
+// 科目分析标签页组件
+interface SubjectAnalysisTabProps {
+  financialData: FinancialData;
+  onViewLedger: (subjectName: string) => void;
+}
+
+const SubjectAnalysisTab: React.FC<SubjectAnalysisTabProps> = ({ financialData, onViewLedger }) => {
+  // 获取有明细账的科目名称列表
+  const ledgerSubjectNames = new Set(financialData.ledgers.map(l => l.subjectName));
+  
+  // 合并所有科目数据
+  const allSubjects = [
+    ...Array.from(financialData.assets.entries()).map(([name, value]) => ({ 
+      name, value, type: '资产', hasLedger: ledgerSubjectNames.has(name) 
+    })),
+    ...Array.from(financialData.liabilities.entries()).map(([name, value]) => ({ 
+      name, value, type: '负债', hasLedger: ledgerSubjectNames.has(name) 
+    })),
+    ...Array.from(financialData.income.entries()).map(([name, value]) => ({ 
+      name, value, type: '收入', hasLedger: ledgerSubjectNames.has(name) 
+    })),
+    ...Array.from(financialData.expenses.entries()).map(([name, value]) => ({ 
+      name, value, type: '费用', hasLedger: ledgerSubjectNames.has(name) 
+    })),
+  ].sort((a, b) => b.value - a.value);
+
+  // 按类型分组
+  const assets = allSubjects.filter(s => s.type === '资产').slice(0, 20);
+  const liabilities = allSubjects.filter(s => s.type === '负债').slice(0, 20);
+  const income = allSubjects.filter(s => s.type === '收入').slice(0, 10);
+  const expenses = allSubjects.filter(s => s.type === '费用').slice(0, 10);
+
+  const SubjectList = ({ items, type, color }: { items: typeof allSubjects, type: string, color: string }) => (
+    <Card className="h-full">
+      <CardHeader className="py-3">
+        <CardTitle className="text-base font-medium flex items-center justify-between">
+          <span>{type}科目</span>
+          <span className={`text-xs px-2 py-1 rounded-full bg-${color}-100 text-${color}-700`}>
+            {items.length}个
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-1 max-h-64 overflow-y-auto">
+          {items.length === 0 ? (
+            <p className="text-sm text-gray-400 py-4 text-center">无{type}科目</p>
+          ) : (
+            items.map((item, idx) => (
+              <div 
+                key={idx} 
+                className={`flex items-center justify-between py-2 px-2 rounded text-sm ${
+                  item.hasLedger 
+                    ? 'hover:bg-blue-50 cursor-pointer group' 
+                    : 'hover:bg-gray-50'
+                }`}
+                onClick={() => item.hasLedger && onViewLedger(item.name)}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-700 truncate max-w-[120px]">{item.name}</span>
+                  {item.hasLedger && (
+                    <Badge variant="outline" className="text-xs text-blue-600 border-blue-300">
+                      有明细
+                    </Badge>
+                  )}
+                </div>
+                <span className="font-medium text-gray-900">{formatCurrencyUniform(item.value)}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-blue-600" />
+            科目余额表分析
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-gray-600">资产总计: {formatCurrencyUniform(financialData.totalAssets)}</p>
+          <p className="text-gray-600">负债总计: {formatCurrencyUniform(financialData.totalLiabilities)}</p>
+          <p className="text-gray-600">权益总计: {formatCurrencyUniform(financialData.totalEquity)}</p>
+          <p className="text-gray-600">营业收入: {formatCurrencyUniform(financialData.totalIncome)}</p>
+          <p className="text-gray-600">净利润: {formatCurrencyUniform(financialData.netProfit)}</p>
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+            <p className="text-sm text-blue-700">
+              <span className="font-medium">提示：</span>
+              带有 
+              <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 mx-1">有明细</Badge>
+              标签的科目可点击查看明细账详情
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SubjectList items={assets} type="资产" color="blue" />
+        <SubjectList items={liabilities} type="负债" color="red" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SubjectList items={income} type="收入" color="green" />
+        <SubjectList items={expenses} type="费用" color="orange" />
+      </div>
+    </div>
+  );
+};
+
 // 明细账标签页组件
 import { analyzeLedger, type LedgerData, type LedgerAnalysis } from '@/utils/ledgerAnalysis';
 import { Search, AlertCircle, Users, ArrowRightLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
-const LedgerDetailTab: React.FC<{ financialData: FinancialData }> = ({ financialData }) => {
+interface LedgerDetailTabProps {
+  financialData: FinancialData;
+  expandedSubject?: string | null;
+  onExpandChange?: (subject: string | null) => void;
+}
+
+const LedgerDetailTab: React.FC<LedgerDetailTabProps> = ({ 
+  financialData, 
+  expandedSubject,
+  onExpandChange 
+}) => {
   // 分析所有明细账
   const ledgerAnalyses = financialData.ledgers.map(ledger => ({
     ledger,
@@ -461,6 +584,21 @@ const LedgerDetailTab: React.FC<{ financialData: FinancialData }> = ({ financial
   // 统计往来单位
   const allCounterparties = ledgerAnalyses.flatMap(({ analysis }) => analysis.counterpartyAnalysis);
   const uniqueCounterparties = new Set(allCounterparties.map(c => c.name)).size;
+  
+  // 根据科目名称找到对应的索引
+  const expandedValue = expandedSubject 
+    ? ledgerAnalyses.findIndex(({ ledger }) => 
+        ledger.subjectName === expandedSubject || 
+        ledger.subjectName.includes(expandedSubject) ||
+        expandedSubject.includes(ledger.subjectName)
+      ) >= 0 
+      ? `ledger-${ledgerAnalyses.findIndex(({ ledger }) => 
+          ledger.subjectName === expandedSubject || 
+          ledger.subjectName.includes(expandedSubject) ||
+          expandedSubject.includes(ledger.subjectName)
+        )}` 
+      : undefined
+    : undefined;
 
   return (
     <div className="space-y-6">
@@ -530,7 +668,24 @@ const LedgerDetailTab: React.FC<{ financialData: FinancialData }> = ({ financial
 
       {/* 明细账列表 */}
       {ledgerAnalyses.length > 0 && (
-        <Accordion type="multiple" className="space-y-4">
+        <Accordion 
+          type="multiple" 
+          className="space-y-4"
+          value={expandedValue ? [expandedValue] : undefined}
+          onValueChange={(values) => {
+            if (onExpandChange) {
+              const expandedIndex = values[0]?.replace('ledger-', '');
+              if (expandedIndex !== undefined) {
+                const idx = parseInt(expandedIndex);
+                if (ledgerAnalyses[idx]) {
+                  onExpandChange(ledgerAnalyses[idx].ledger.subjectName);
+                }
+              } else {
+                onExpandChange(null);
+              }
+            }
+          }}
+        >
           {ledgerAnalyses.map(({ ledger, analysis }, index) => (
             <AccordionItem key={index} value={`ledger-${index}`} className="border rounded-lg overflow-hidden">
               <AccordionTrigger className="px-4 py-3 hover:bg-gray-50 bg-gray-50/50">
