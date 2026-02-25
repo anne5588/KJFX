@@ -78,46 +78,75 @@ export interface LedgerAnomaly {
 export const parseLedgerSheet = (data: any[][]): LedgerData[] => {
   const ledgers: LedgerData[] = [];
   let currentLedger: LedgerData | null = null;
+  let lineCount = 0;
   
   console.log(`[parseLedgerSheet] 开始解析，共 ${data.length} 行数据`);
   
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
-    if (!row || row.length < 5) continue;
+    if (!row || row.length < 3) continue;
     
-    // 检测科目标题行（如"应收账款"、"银行存款"）
+    lineCount++;
     const firstCell = String(row[0] || '').trim();
+    const secondCell = String(row[1] || '').trim();
     
-    // 打印前几行用于调试
-    if (i < 10) {
-      console.log(`  行${i}: "${firstCell}" (${row.length}列)`);
+    // 打印前20行用于调试
+    if (lineCount <= 20) {
+      console.log(`  行${i} [${row.length}列]: "${firstCell}" | "${secondCell}"`);
     }
     
-    // 匹配科目标题（支持多种格式）
-    // 格式1: "科目：1001 库存现金"
-    // 格式2: "库存现金" (科目名称直接出现)
-    // 格式3: "1001 库存现金明细账"
-    const isSubjectHeader = firstCell.includes('科目：') || 
-                           firstCell.match(/^\d+\s+.+账$/) ||
-                           (firstCell.length > 1 && firstCell.length < 20 && !firstCell.includes('日期') && !firstCell.includes('编制'));
+    // 跳过空行和标题行
+    if (!firstCell || firstCell === '日期' || firstCell.includes('编制单位') || firstCell.includes('科目编码')) {
+      continue;
+    }
     
-    if (isSubjectHeader) {
+    // 检测科目标题行
+    // 格式1: "库存现金" (第一列是科目名称，后面几列也是相同科目名称)
+    // 格式2: "科目：1001 库存现金"
+    // 格式3: "1001 库存现金明细账"
+    const isSubjectHeader = (
+      // 格式1: 第一列是科目名称，且第二列也是相同内容（金蝶格式）
+      (firstCell && secondCell === firstCell && firstCell.length > 1 && firstCell.length < 30) ||
+      // 格式2: 包含"科目："
+      firstCell.includes('科目：') || 
+      // 格式3: "1001 库存现金" 或 "1001 库存现金明细账"
+      firstCell.match(/^\d{3,4}\s+.+$/) ||
+      // 格式4: 以"明细账"结尾
+      firstCell.match(/.+明细账$/)
+    );
+    
+    if (isSubjectHeader && !firstCell.match(/^\d{4}[-/]\d{2}/)) {
       console.log(`  -> 检测到科目标题: "${firstCell}"`);
+      
       // 保存上一个科目的数据
       if (currentLedger && currentLedger.entries.length > 0) {
         calculateLedgerTotals(currentLedger);
         ledgers.push(currentLedger);
+        console.log(`     保存上一科目: ${currentLedger.subjectName}, 共 ${currentLedger.entries.length} 条记录`);
       }
       
       // 解析科目信息
-      const subjectMatch = firstCell.match(/科目：(\d+)\s*(.+)/) || 
-                           firstCell.match(/(\d{4})\s+(.+)/);
-      const subjectCode = subjectMatch ? subjectMatch[1] : '';
-      const subjectName = subjectMatch ? subjectMatch[2].replace(/明细账$/, '').trim() : firstCell;
+      let subjectCode = '';
+      let subjectName = firstCell;
+      
+      // 尝试提取科目代码和名称
+      const match1 = firstCell.match(/科目：(\d+)\s*(.+)/);
+      const match2 = firstCell.match(/^(\d{3,4})\s+(.+)/);
+      const match3 = firstCell.match(/^(.+?)明细账$/);
+      
+      if (match1) {
+        subjectCode = match1[1];
+        subjectName = match1[2];
+      } else if (match2) {
+        subjectCode = match2[1];
+        subjectName = match2[2];
+      } else if (match3) {
+        subjectName = match3[1];
+      }
       
       currentLedger = {
         subjectCode,
-        subjectName,
+        subjectName: subjectName.replace(/明细账$/, '').trim(),
         period: '',
         entries: [],
         beginningBalance: 0,
@@ -130,7 +159,7 @@ export const parseLedgerSheet = (data: any[][]): LedgerData[] => {
     }
     
     // 检测期间信息
-    if (firstCell.includes('年') && firstCell.includes('月') && firstCell.includes('至')) {
+    if (firstCell.includes('年') && firstCell.includes('月') && (firstCell.includes('至') || firstCell.includes('~'))) {
       if (currentLedger) {
         currentLedger.period = firstCell;
       }
@@ -138,10 +167,9 @@ export const parseLedgerSheet = (data: any[][]): LedgerData[] => {
     }
     
     // 解析明细记录
-    // 格式：日期 | 凭证号 | 科目编码 | 科目名称 | 辅助核算 | 摘要 | 借方 | 贷方 | 方向 | 余额
-    // 支持多种日期格式：2026-01-01, 2026/01/01, 2026年01月01日
-    const datePattern = /^\d{4}([-/]\d{2}){2}$|^\d{4}年\d{1,2}月\d{1,2}日?$/;
-    if (currentLedger && firstCell.match(datePattern)) {
+    // 支持多种日期格式：2026-01-01, 2026/01/01, 2026年01月01日, 2026-1-1
+    const datePattern = /^\d{4}([-/年]\d{1,2}){2}日?$/;
+    if (currentLedger && firstCell.match(datePattern) && !firstCell.includes('科目')) {
       const entry = parseLedgerEntry(row);
       if (entry) {
         currentLedger.entries.push(entry);
@@ -179,19 +207,23 @@ export const parseLedgerSheet = (data: any[][]): LedgerData[] => {
 // 解析单条明细记录
 const parseLedgerEntry = (row: any[]): LedgerEntry | null => {
   try {
+    // 根据列数自适应解析
+    const len = row.length;
     const date = String(row[0] || '').trim();
     const voucherNo = String(row[1] || '').trim();
     const subjectCode = String(row[2] || '').trim();
     const subjectName = String(row[3] || '').trim();
     const auxiliary = String(row[4] || '').trim();
-    const summary = String(row[5] || '').trim();
-    const debit = extractNumber(row[6]);
-    const credit = extractNumber(row[7]);
-    const direction = String(row[8] || '').trim() as '借' | '贷';
-    const balance = extractNumber(row[9]);
+    // 摘要可能在不同列
+    const summary = String(row.find((cell, idx) => idx >= 3 && idx <= 6 && String(cell).length > 2 && !String(cell).match(/^\d+\.?\d*$/)) || row[5] || row[4] || '').trim();
+    // 查找金额列（借方、贷方通常在倒数第3、2列）
+    const debit = len >= 8 ? extractNumber(row[len - 4]) : extractNumber(row[5]);
+    const credit = len >= 8 ? extractNumber(row[len - 3]) : extractNumber(row[6]);
+    const direction = String(len >= 8 ? row[len - 2] : row[7] || '').trim() as '借' | '贷';
+    const balance = len >= 8 ? extractNumber(row[len - 1]) : extractNumber(row[8]);
     
-    // 只保留有效记录（有日期、金额不为0）
-    if (!date || (debit === 0 && credit === 0 && balance === 0)) {
+    // 只保留有效记录（有日期、不是标题行、金额有效）
+    if (!date || date.includes('日期') || date.includes('科目') || (debit === 0 && credit === 0 && balance === 0)) {
       return null;
     }
     
