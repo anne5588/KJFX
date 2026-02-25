@@ -1,10 +1,10 @@
 // 简化的AnalysisResult组件 - 由于原文件编码损坏，这是修复版本
 import React from 'react';
-import { TrendingUp, AlertTriangle, CheckCircle, FileText, PieChart, BarChart3, Activity } from 'lucide-react';
+import { TrendingUp, AlertTriangle, CheckCircle, FileText, PieChart, BarChart3, Activity, Shield, Wallet, RotateCcw, TrendingDown } from 'lucide-react';
 import type { AnalysisResult as AnalysisResultType, ChartData } from '@/types/accounting';
 import { formatCurrencyUniform, type FinancialData, type DupontAnalysis } from '@/utils/excelParser';
 
-import MetricCard from './MetricCard';
+// import MetricCard from './MetricCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PieChartComponent, BarChartComponent, RadarChartComponent, FinancialStructureChart, IncomeExpenseChart } from './Charts';
@@ -26,18 +26,7 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
   const [activeTab, setActiveTab] = React.useState('metrics');
   const [expandedLedger, setExpandedLedger] = React.useState<string | null>(null);
 
-  const getMetricStatus = (value: number, type: 'ratio' | 'percentage') => {
-    if (type === 'ratio') {
-      if (value >= 2) return { trend: 'up' as const, status: '良好' };
-      if (value >= 1) return { trend: 'neutral' as const, status: '一般' };
-      return { trend: 'down' as const, status: '偏低' };
-    } else {
-      if (value >= 20) return { trend: 'up' as const, status: '优秀' };
-      if (value >= 10) return { trend: 'up' as const, status: '良好' };
-      if (value >= 5) return { trend: 'neutral' as const, status: '一般' };
-      return { trend: 'down' as const, status: '偏低' };
-    }
-  };
+
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -93,61 +82,9 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
           <TabsTrigger value="audit">审计</TabsTrigger>
         </TabsList>
 
-        {/* 财务指标 */}
+        {/* 财务指标 - 五大能力分析 */}
         <TabsContent value="metrics" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <MetricCard
-              title="流动比率"
-              value={metrics.currentRatio}
-              description="衡量短期偿债能力"
-              trend={getMetricStatus(metrics.currentRatio, 'ratio').trend}
-              trendValue={getMetricStatus(metrics.currentRatio, 'ratio').status}
-              color="blue"
-            />
-            <MetricCard
-              title="速动比率"
-              value={metrics.quickRatio}
-              description="衡量即时偿债能力"
-              trend={getMetricStatus(metrics.quickRatio, 'ratio').trend}
-              trendValue={getMetricStatus(metrics.quickRatio, 'ratio').status}
-              color="blue"
-            />
-            <MetricCard
-              title="资产负债率"
-              value={metrics.debtToAssetRatio}
-              unit="%"
-              description="衡量财务杠杆水平"
-              trend={metrics.debtToAssetRatio < 50 ? 'up' : 'down'}
-              trendValue={metrics.debtToAssetRatio < 50 ? '稳健' : '偏高'}
-              color="purple"
-            />
-            <MetricCard
-              title="净资产收益率 ROE"
-              value={metrics.roe}
-              unit="%"
-              description="衡量股东权益回报率"
-              trend={getMetricStatus(metrics.roe, 'percentage').trend}
-              trendValue={getMetricStatus(metrics.roe, 'percentage').status}
-              color="orange"
-            />
-            <MetricCard
-              title="销售净利率"
-              value={metrics.netProfitMargin}
-              unit="%"
-              description="衡量盈利能力"
-              trend={getMetricStatus(metrics.netProfitMargin, 'percentage').trend}
-              trendValue={getMetricStatus(metrics.netProfitMargin, 'percentage').status}
-              color="green"
-            />
-            <MetricCard
-              title="总资产周转率"
-              value={metrics.totalAssetTurnover}
-              description="衡量资产使用效率"
-              trend={metrics.totalAssetTurnover > 0.8 ? 'up' : 'neutral'}
-              trendValue={metrics.totalAssetTurnover > 0.8 ? '良好' : '一般'}
-              color="cyan"
-            />
-          </div>
+          <FinancialMetricsDashboard metrics={metrics} financialData={financialData} />
         </TabsContent>
 
         {/* 杜邦分析 */}
@@ -438,6 +375,244 @@ const ChartsTab: React.FC<ChartsTabProps> = ({ financialData, metrics }) => {
   );
 };
 
+// 五大能力分析仪表盘
+import { Separator } from '@/components/ui/separator';
+
+interface FinancialMetricsDashboardProps {
+  metrics: AnalysisResultType['metrics'];
+  financialData: FinancialData;
+}
+
+const FinancialMetricsDashboard: React.FC<FinancialMetricsDashboardProps> = ({ 
+  metrics, financialData 
+}) => {
+  // 评分计算
+  const calculateScore = (value: number, goodThreshold: number, badThreshold: number) => {
+    if (value >= goodThreshold) return { score: 90, level: '优秀', color: 'green' };
+    if (value >= badThreshold) return { score: 70, level: '良好', color: 'blue' };
+    return { score: 50, level: '待改进', color: 'yellow' };
+  };
+
+  // 各能力维度评分
+  const solvencyScore = calculateScore(metrics.currentRatio, 2, 1.5);
+  const operationScore = calculateScore(metrics.totalAssetTurnover, 1, 0.5);
+  const profitScore = calculateScore(metrics.roe, 15, 8);
+  const growthScore = calculateScore(Math.abs(metrics.revenueGrowthRate), 20, 10);
+  const cashflowScore = calculateScore(metrics.operatingCashFlowRatio, 1, 0.5);
+  
+  const overallScore = Math.round(
+    (solvencyScore.score + operationScore.score + profitScore.score + 
+     growthScore.score + cashflowScore.score) / 5
+  );
+
+  const ScoreCard = ({ 
+    title, score, level, color, icon: Icon, metrics: metricItems 
+  }: { 
+    title: string, score: number, level: string, color: string, icon: any,
+    metrics: { label: string, value: string | number, unit?: string }[]
+  }) => {
+    const colorClasses: Record<string, { bg: string, text: string, border: string }> = {
+      green: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+      blue: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+      yellow: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' },
+      red: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+    };
+    const colors = colorClasses[color] || colorClasses.blue;
+    
+    return (
+      <Card className={`${colors.bg} border ${colors.border}`}>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className={`text-lg flex items-center gap-2 ${colors.text}`}>
+              <Icon className="w-5 h-5" />
+              {title}
+            </CardTitle>
+            <div className="text-right">
+              <div className={`text-3xl font-bold ${colors.text}`}>{score}</div>
+              <div className={`text-sm ${colors.text} opacity-80`}>{level}</div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {metricItems.map((item, idx) => (
+              <div key={idx} className="flex justify-between text-sm">
+                <span className="text-gray-600">{item.label}</span>
+                <span className="font-medium">
+                  {item.value}{item.unit ? <span className="text-gray-500 ml-1">{item.unit}</span> : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* 综合评分卡片 */}
+      <Card className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-bold mb-1">财务健康度综合评分</h3>
+              <p className="text-blue-100 text-sm">基于五大能力维度的综合评估</p>
+            </div>
+            <div className="text-right">
+              <div className="text-5xl font-bold">{overallScore}</div>
+              <div className="text-blue-100">满分100</div>
+            </div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            {['偿债能力', '营运能力', '盈利能力', '发展能力', '现金流'].map((name, i) => {
+              const scores = [solvencyScore, operationScore, profitScore, growthScore, cashflowScore];
+              return (
+                <div key={name} className="flex-1 bg-white/20 rounded p-2 text-center">
+                  <div className="text-xs text-blue-100">{name}</div>
+                  <div className="font-bold">{scores[i].score}</div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 五大能力卡片 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* 1. 偿债能力 */}
+        <ScoreCard
+          title="偿债能力"
+          score={solvencyScore.score}
+          level={solvencyScore.level}
+          color={solvencyScore.color}
+          icon={Shield}
+          metrics={[
+            { label: '流动比率', value: metrics.currentRatio },
+            { label: '速动比率', value: metrics.quickRatio },
+            { label: '资产负债率', value: metrics.debtToAssetRatio, unit: '%' },
+            { label: '利息保障倍数', value: metrics.interestCoverageRatio },
+          ]}
+        />
+
+        {/* 2. 营运能力 */}
+        <ScoreCard
+          title="营运能力"
+          score={operationScore.score}
+          level={operationScore.level}
+          color={operationScore.color}
+          icon={RotateCcw}
+          metrics={[
+            { label: '应收账款周转', value: metrics.receivablesTurnover, unit: '次' },
+            { label: '应收账款天数', value: metrics.receivablesDays, unit: '天' },
+            { label: '存货周转率', value: metrics.inventoryTurnover, unit: '次' },
+            { label: '总资产周转率', value: metrics.totalAssetTurnover },
+            { label: '现金转换周期', value: metrics.cashConversionCycle, unit: '天' },
+          ]}
+        />
+
+        {/* 3. 盈利能力 */}
+        <ScoreCard
+          title="盈利能力"
+          score={profitScore.score}
+          level={profitScore.level}
+          color={profitScore.color}
+          icon={TrendingUp}
+          metrics={[
+            { label: '毛利率', value: metrics.grossProfitMargin, unit: '%' },
+            { label: '营业利润率', value: metrics.operatingProfitMargin, unit: '%' },
+            { label: '净利率', value: metrics.netProfitMargin, unit: '%' },
+            { label: 'ROE', value: metrics.roe, unit: '%' },
+            { label: 'ROA', value: metrics.roa, unit: '%' },
+          ]}
+        />
+
+        {/* 4. 发展能力 */}
+        <ScoreCard
+          title="发展能力"
+          score={growthScore.score}
+          level={growthScore.level}
+          color={growthScore.color}
+          icon={TrendingDown}
+          metrics={[
+            { label: '收入增长率', value: metrics.revenueGrowthRate, unit: '%' },
+            { label: '净利润增长率', value: metrics.netProfitGrowthRate, unit: '%' },
+            { label: '总资产增长率', value: metrics.totalAssetGrowthRate, unit: '%' },
+            { label: '资本保值增值率', value: metrics.equityGrowthRate, unit: '%' },
+            { label: '可持续增长率', value: metrics.sustainableGrowthRate, unit: '%' },
+          ]}
+        />
+
+        {/* 5. 现金流 */}
+        <ScoreCard
+          title="现金流能力"
+          score={cashflowScore.score}
+          level={cashflowScore.level}
+          color={cashflowScore.color}
+          icon={Wallet}
+          metrics={[
+            { label: '经营现金流/净利润', value: metrics.operatingCashFlowRatio },
+            { label: '自由现金流', value: formatCurrencyUniform(metrics.freeCashFlow) },
+            { label: '销售现金比率', value: metrics.cashFlowToRevenue, unit: '%' },
+            { label: '现金收入比率', value: metrics.cashRecoveryRate, unit: '%' },
+          ]}
+        />
+
+        {/* 杜邦分析速览 */}
+        <Card className="bg-gradient-to-br from-orange-50 to-amber-50 border-orange-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg flex items-center gap-2 text-orange-700">
+              <BarChart3 className="w-5 h-5" />
+              杜邦分析速览
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="text-center p-3 bg-white rounded-lg">
+                <div className="text-2xl font-bold text-orange-600">{metrics.roe}%</div>
+                <div className="text-xs text-gray-500">净资产收益率 ROE</div>
+              </div>
+              <Separator />
+              <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                <div>
+                  <div className="font-medium">{metrics.netProfitMargin}%</div>
+                  <div className="text-xs text-gray-500">净利率</div>
+                </div>
+                <div className="text-orange-500">×</div>
+                <div>
+                  <div className="font-medium">{metrics.totalAssetTurnover}</div>
+                  <div className="text-xs text-gray-500">资产周转</div>
+                </div>
+              </div>
+              <div className="text-center text-gray-400">×</div>
+              <div className="text-center">
+                <div className="font-medium">{financialData.totalEquity > 0 
+                  ? (financialData.totalAssets / financialData.totalEquity).toFixed(2) 
+                  : 0}</div>
+                <div className="text-xs text-gray-500">权益乘数</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 指标说明 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">指标说明</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-gray-600 space-y-2">
+          <p><strong>偿债能力：</strong>反映企业偿还债务的能力，包括短期偿债（流动比率）和长期偿债（资产负债率）</p>
+          <p><strong>营运能力：</strong>反映企业资产运营效率，周转率越高说明资产利用效率越好</p>
+          <p><strong>盈利能力：</strong>反映企业获取利润的能力，ROE是综合性最强的盈利指标</p>
+          <p><strong>发展能力：</strong>反映企业成长性，增长率越高说明企业发展势头越好</p>
+          <p><strong>现金流：</strong>反映企业现金创造能力，经营现金流应持续为正且与利润匹配</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
 // 科目分析标签页组件
 interface SubjectAnalysisTabProps {
   financialData: FinancialData;
@@ -712,7 +887,7 @@ const LedgerDetailTab: React.FC<LedgerDetailTabProps> = ({
 };
 
 // 审计标签页组件（简化版）
-import { Shield, FileCheck } from 'lucide-react';
+import { FileCheck } from 'lucide-react';
 
 const AuditTab: React.FC<{ financialData: FinancialData }> = ({ financialData }) => {
   // 简单的审计检查
