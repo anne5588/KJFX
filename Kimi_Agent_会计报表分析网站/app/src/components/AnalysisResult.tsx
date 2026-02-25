@@ -1,6 +1,10 @@
 // 简化的AnalysisResult组件 - 由于原文件编码损坏，这是修复版本
 import React from 'react';
-import { TrendingUp, AlertTriangle, CheckCircle, FileText, PieChart, BarChart3, Activity, Shield, Wallet, RotateCcw, TrendingDown } from 'lucide-react';
+import { 
+  TrendingUp, AlertTriangle, CheckCircle, FileText, PieChart, BarChart3, Activity, 
+  Shield, Wallet, RotateCcw, TrendingDown, Award, Target, AlertOctagon, Info,
+  ArrowUpRight, ArrowDownRight, Minus
+} from 'lucide-react';
 import type { AnalysisResult as AnalysisResultType, ChartData } from '@/types/accounting';
 import { formatCurrencyUniform, type FinancialData, type DupontAnalysis } from '@/utils/excelParser';
 
@@ -77,7 +81,9 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
           <TabsTrigger value="subject">科目分析</TabsTrigger>
           <TabsTrigger value="structure">财务结构</TabsTrigger>
           <TabsTrigger value="charts">数据可视化</TabsTrigger>
-          <TabsTrigger value="suggestions">分析建议</TabsTrigger>
+          <TabsTrigger value="comparison">多期对比</TabsTrigger>
+          <TabsTrigger value="scoring">综合评分</TabsTrigger>
+          <TabsTrigger value="anomaly">异常检测</TabsTrigger>
           <TabsTrigger value="ledger">明细账</TabsTrigger>
           <TabsTrigger value="audit">审计</TabsTrigger>
         </TabsList>
@@ -243,6 +249,21 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
           />
         </TabsContent>
 
+        {/* 多期对比分析 */}
+        <TabsContent value="comparison" className="space-y-6">
+          <MultiPeriodAnalysisTab financialData={financialData} metrics={metrics} />
+        </TabsContent>
+
+        {/* 沃尔评分法 */}
+        <TabsContent value="scoring" className="space-y-6">
+          <WallScoringTab metrics={metrics} />
+        </TabsContent>
+
+        {/* 异常检测 */}
+        <TabsContent value="anomaly" className="space-y-6">
+          <AnomalyDetectionTab financialData={financialData} />
+        </TabsContent>
+
         {/* 审计 */}
         <TabsContent value="audit" className="space-y-6">
           <AuditTab financialData={financialData} />
@@ -377,6 +398,7 @@ const ChartsTab: React.FC<ChartsTabProps> = ({ financialData, metrics }) => {
 
 // 五大能力分析仪表盘
 import { Separator } from '@/components/ui/separator';
+import { Progress } from '@/components/ui/progress';
 
 interface FinancialMetricsDashboardProps {
   metrics: AnalysisResultType['metrics'];
@@ -1125,6 +1147,434 @@ const LedgerDetailView: React.FC<{ ledger: LedgerData; analysis: LedgerAnalysis 
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+};
+
+// ==================== 第二阶段：沃尔评分法标签页 ====================
+import { calculateWallScore, getRatingDescription, type WallScoringResult } from '@/utils/wallScoring';
+
+const WallScoringTab: React.FC<{ metrics: AnalysisResultType['metrics'] }> = ({ metrics }) => {
+  const scoreResult: WallScoringResult = calculateWallScore(metrics);
+  
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'excellent': return 'bg-green-500';
+      case 'good': return 'bg-blue-500';
+      case 'average': return 'bg-yellow-500';
+      case 'poor': return 'bg-red-500';
+      default: return 'bg-gray-500';
+    }
+  };
+  
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'excellent': return '优秀';
+      case 'good': return '良好';
+      case 'average': return '一般';
+      case 'poor': return '较差';
+      default: return '未知';
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* 综合评分卡片 */}
+      <Card className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+        <CardContent className="p-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                <Award className="w-8 h-8" />
+                沃尔综合评分
+              </h3>
+              <p className="text-indigo-100">基于9项核心财务指标的信用评价体系</p>
+            </div>
+            <div className="text-right">
+              <div className="text-6xl font-bold">{scoreResult.totalScore}</div>
+              <div className="text-indigo-100">满分 {scoreResult.maxPossibleScore}</div>
+            </div>
+          </div>
+          
+          <div className="mt-6 flex items-center justify-between bg-white/10 rounded-lg p-4">
+            <div>
+              <span className="text-indigo-100">信用等级</span>
+              <div className="text-4xl font-bold" style={{ color: scoreResult.ratingColor }}>
+                {scoreResult.rating}
+              </div>
+            </div>
+            <div className="text-right max-w-md">
+              <p className="text-indigo-100 text-sm">{getRatingDescription(scoreResult.rating)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 指标得分详情 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Target className="w-5 h-5 text-blue-600" />
+            各项指标得分
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {scoreResult.indicatorScores.map((indicator, idx) => (
+              <div key={idx} className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{indicator.name}</span>
+                    <span className="text-gray-400">(权重{indicator.weight}%)</span>
+                    <Badge className={`${getStatusColor(indicator.status)} text-white text-xs`}>
+                      {getStatusText(indicator.status)}
+                    </Badge>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-bold">{indicator.score}</span>
+                    <span className="text-gray-400">/{indicator.maxScore}</span>
+                  </div>
+                </div>
+                <Progress value={(indicator.score / indicator.maxScore) * 100} className="h-2" />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>实际值: {indicator.actualValue}{indicator.unit}</span>
+                  <span>标准值: {indicator.standardValue}{indicator.unit}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 改进建议 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-green-600" />
+            改进建议
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {scoreResult.suggestions.map((suggestion, idx) => (
+              <div key={idx} className="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
+                {suggestion}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+// ==================== 第二阶段：异常检测标签页 ====================
+import { detectAnomalies, generateAnomalySummary, type Anomaly } from '@/utils/anomalyDetection';
+
+const AnomalyDetectionTab: React.FC<{ financialData: FinancialData }> = ({ financialData }) => {
+  const anomalies: Anomaly[] = detectAnomalies(financialData);
+  const summary = generateAnomalySummary(anomalies);
+  
+  const getSeverityIcon = (severity: string) => {
+    switch (severity) {
+      case 'high': return <AlertOctagon className="w-5 h-5 text-red-600" />;
+      case 'medium': return <AlertTriangle className="w-5 h-5 text-yellow-600" />;
+      case 'low': return <Info className="w-5 h-5 text-blue-600" />;
+      default: return <Info className="w-5 h-5 text-gray-600" />;
+    }
+  };
+  
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'high': return 'bg-red-50 border-red-200';
+      case 'medium': return 'bg-yellow-50 border-yellow-200';
+      case 'low': return 'bg-blue-50 border-blue-200';
+      default: return 'bg-gray-50 border-gray-200';
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* 异常统计概览 */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="bg-gray-50 border-gray-200">
+          <CardContent className="p-4">
+            <div className="text-center">
+              <p className="text-sm text-gray-600">异常总数</p>
+              <p className="text-3xl font-bold text-gray-800">{summary.totalCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-red-50 border-red-200">
+          <CardContent className="p-4">
+            <div className="text-center">
+              <p className="text-sm text-red-600">高风险</p>
+              <p className="text-3xl font-bold text-red-700">{summary.highRisk}</p>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-yellow-50 border-yellow-200">
+          <CardContent className="p-4">
+            <div className="text-center">
+              <p className="text-sm text-yellow-600">中风险</p>
+              <p className="text-3xl font-bold text-yellow-700">{summary.mediumRisk}</p>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="p-4">
+            <div className="text-center">
+              <p className="text-sm text-blue-600">低风险</p>
+              <p className="text-3xl font-bold text-blue-700">{summary.lowRisk}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 整体评估 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Shield className="w-5 h-5 text-blue-600" />
+            整体评估
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className={`text-lg font-medium ${
+            summary.highRisk > 0 ? 'text-red-600' : 
+            summary.mediumRisk > 0 ? 'text-yellow-600' : 'text-green-600'
+          }`}>
+            {summary.overallAssessment}
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* 异常列表 */}
+      <div className="space-y-4">
+        {anomalies.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+              <p className="text-lg text-gray-600">未发现异常</p>
+              <p className="text-sm text-gray-400">财务数据变动在正常范围内</p>
+            </CardContent>
+          </Card>
+        ) : (
+          anomalies.map((anomaly, idx) => (
+            <Card key={idx} className={`${getSeverityColor(anomaly.severity)}`}>
+              <CardHeader className="pb-2">
+                <div className="flex items-start gap-3">
+                  {getSeverityIcon(anomaly.severity)}
+                  <div className="flex-1">
+                    <CardTitle className="text-base font-semibold">
+                      {anomaly.title}
+                    </CardTitle>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {anomaly.description}
+                    </p>
+                  </div>
+                  <Badge variant={anomaly.severity === 'high' ? 'destructive' : 'default'}>
+                    {anomaly.severity === 'high' ? '高风险' : 
+                     anomaly.severity === 'medium' ? '中风险' : '低风险'}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
+                  <div>
+                    <p className="text-gray-500">本期值</p>
+                    <p className="font-medium">{formatCurrencyUniform(anomaly.currentValue)}</p>
+                  </div>
+                  {anomaly.previousValue !== undefined && (
+                    <div>
+                      <p className="text-gray-500">上期值</p>
+                      <p className="font-medium">{formatCurrencyUniform(anomaly.previousValue)}</p>
+                    </div>
+                  )}
+                  {anomaly.changePercentage !== undefined && (
+                    <div>
+                      <p className="text-gray-500">变动幅度</p>
+                      <p className={`font-medium ${anomaly.changePercentage > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        {anomaly.changePercentage > 0 ? '+' : ''}{anomaly.changePercentage.toFixed(1)}%
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-gray-500">预警阈值</p>
+                    <p className="font-medium">{anomaly.threshold}%</p>
+                  </div>
+                </div>
+                <div className="p-3 bg-white/50 rounded-lg">
+                  <p className="text-sm font-medium text-gray-700 mb-1">建议措施：</p>
+                  <p className="text-sm text-gray-600">{anomaly.suggestion}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ==================== 第二阶段：多期对比标签页 ====================
+import { performMultiPeriodAnalysis, type MultiPeriodAnalysisResult } from '@/utils/multiPeriodAnalysis';
+
+const MultiPeriodAnalysisTab: React.FC<{ 
+  financialData: FinancialData; 
+  metrics: AnalysisResultType['metrics'] 
+}> = ({ financialData, metrics }) => {
+  const analysis: MultiPeriodAnalysisResult = performMultiPeriodAnalysis(financialData, metrics);
+
+  const getTrendIcon = (trend: string) => {
+    switch (trend) {
+      case 'up': return <ArrowUpRight className="w-4 h-4 text-red-500" />;
+      case 'down': return <ArrowDownRight className="w-4 h-4 text-green-500" />;
+      default: return <Minus className="w-4 h-4 text-gray-500" />;
+    }
+  };
+
+  const ComparisonTable = ({ 
+    title, 
+    items 
+  }: { 
+    title: string; 
+    items: MultiPeriodAnalysisResult['balanceSheetComparison'] 
+  }) => (
+    <Card className="h-full">
+      <CardHeader className="py-3">
+        <CardTitle className="text-base font-medium">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-2 max-h-80 overflow-y-auto">
+          {items.length === 0 ? (
+            <p className="text-sm text-gray-400 py-4 text-center">无数据</p>
+          ) : (
+            items.slice(0, 10).map((item, idx) => (
+              <div key={idx} className="flex items-center justify-between py-2 border-b last:border-0">
+                <div className="flex items-center gap-2">
+                  {getTrendIcon(item.trend)}
+                  <span className="text-sm text-gray-700">{item.name}</span>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-medium">
+                    {formatCurrencyUniform(item.currentPeriod)}
+                  </div>
+                  <div className={`text-xs ${
+                    item.percentageChange > 0 ? 'text-red-600' : 
+                    item.percentageChange < 0 ? 'text-green-600' : 'text-gray-500'
+                  }`}>
+                    {item.percentageChange > 0 ? '+' : ''}{item.percentageChange.toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* 统计概览 */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="p-4 text-center">
+            <p className="text-sm text-blue-600">对比项目</p>
+            <p className="text-2xl font-bold text-blue-800">{analysis.summary.totalItems}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-green-50 border-green-200">
+          <CardContent className="p-4 text-center">
+            <p className="text-sm text-green-600">增长</p>
+            <p className="text-2xl font-bold text-green-800">{analysis.summary.increasedItems}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-red-50 border-red-200">
+          <CardContent className="p-4 text-center">
+            <p className="text-sm text-red-600">下降</p>
+            <p className="text-2xl font-bold text-red-800">{analysis.summary.decreasedItems}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-gray-50 border-gray-200">
+          <CardContent className="p-4 text-center">
+            <p className="text-sm text-gray-600">持平</p>
+            <p className="text-2xl font-bold text-gray-800">{analysis.summary.stableItems}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-yellow-50 border-yellow-200">
+          <CardContent className="p-4 text-center">
+            <p className="text-sm text-yellow-600">重大变动</p>
+            <p className="text-2xl font-bold text-yellow-800">{analysis.summary.significantChanges}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 趋势分析 */}
+      {analysis.trendAnalysis.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-blue-600" />
+              趋势分析
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {analysis.trendAnalysis.map((trend, idx) => (
+                <div key={idx} className={`p-3 rounded-lg ${
+                  trend.direction === 'positive' ? 'bg-green-50' :
+                  trend.direction === 'negative' ? 'bg-red-50' : 'bg-gray-50'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={trend.direction === 'positive' ? 'default' : trend.direction === 'negative' ? 'destructive' : 'secondary'}>
+                      {trend.category}
+                    </Badge>
+                    <span className={`text-sm ${
+                      trend.direction === 'positive' ? 'text-green-700' :
+                      trend.direction === 'negative' ? 'text-red-700' : 'text-gray-700'
+                    }`}>
+                      {trend.description}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 对比表格 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ComparisonTable title="资产负债表对比" items={analysis.balanceSheetComparison} />
+        <ComparisonTable title="利润表对比" items={analysis.incomeStatementComparison} />
+      </div>
+
+      {/* 指标对比 */}
+      <ComparisonTable title="财务指标对比" items={analysis.ratioComparison} />
+
+      {/* 建议 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-600" />
+            分析建议
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {analysis.suggestions.map((suggestion, idx) => (
+              <div key={idx} className="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
+                {suggestion}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
