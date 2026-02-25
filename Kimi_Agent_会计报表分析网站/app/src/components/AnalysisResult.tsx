@@ -77,14 +77,15 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
 
       {/* 详细分析标签页 */}
       <Tabs defaultValue="metrics" className="w-full">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="metrics">财务指标</TabsTrigger>
           <TabsTrigger value="dupont">杜邦分析</TabsTrigger>
           <TabsTrigger value="subject">科目分析</TabsTrigger>
           <TabsTrigger value="structure">财务结构</TabsTrigger>
           <TabsTrigger value="charts">数据可视化</TabsTrigger>
           <TabsTrigger value="suggestions">分析建议</TabsTrigger>
-          <TabsTrigger value="ledger">审计</TabsTrigger>
+          <TabsTrigger value="ledger">明细账</TabsTrigger>
+          <TabsTrigger value="audit">审计</TabsTrigger>
         </TabsList>
 
         {/* 财务指标 */}
@@ -299,9 +300,14 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
           </Card>
         </TabsContent>
 
-        {/* 审计 */}
+        {/* 明细账 */}
         <TabsContent value="ledger" className="space-y-6">
-          <LedgerAuditTab financialData={financialData} />
+          <LedgerDetailTab financialData={financialData} />
+        </TabsContent>
+
+        {/* 审计 */}
+        <TabsContent value="audit" className="space-y-6">
+          <AuditTab financialData={financialData} />
         </TabsContent>
       </Tabs>
     </div>
@@ -431,13 +437,13 @@ const ChartsTab: React.FC<ChartsTabProps> = ({ financialData, metrics }) => {
   );
 };
 
-// 审计分析标签页组件
+// 明细账标签页组件
 import { analyzeLedger, type LedgerData, type LedgerAnalysis } from '@/utils/ledgerAnalysis';
-import { Search, AlertCircle, Users, ArrowRightLeft, Wallet } from 'lucide-react';
+import { Search, AlertCircle, Users, ArrowRightLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
-const LedgerAuditTab: React.FC<{ financialData: FinancialData }> = ({ financialData }) => {
+const LedgerDetailTab: React.FC<{ financialData: FinancialData }> = ({ financialData }) => {
   // 分析所有明细账
   const ledgerAnalyses = financialData.ledgers.map(ledger => ({
     ledger,
@@ -546,46 +552,95 @@ const LedgerAuditTab: React.FC<{ financialData: FinancialData }> = ({ financialD
         </Accordion>
       )}
 
-      {/* 财务概要和账龄分析 */}
-      {(financialData.financialSummary || financialData.agingAnalysis) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {financialData.financialSummary && (
-            <Card className="bg-blue-50 border-blue-200">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2 text-blue-800">
-                  <Wallet className="w-5 h-5" />
-                  财务概要信息表
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-blue-700">检测到财务概要信息</p>
-                <p className="text-sm text-blue-600 mt-1">
-                  收入: {formatCurrencyUniform(financialData.financialSummary.revenue?.currentPeriodAmount || 0)} | 
-                  费用比率: {financialData.financialSummary.expenseRatio?.currentPeriodAmount.toFixed(1) || 0}%
-                </p>
-              </CardContent>
-            </Card>
-          )}
+    </div>
+  );
+};
 
-          {financialData.agingAnalysis && (
-            <Card className="bg-purple-50 border-purple-200">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2 text-purple-800">
-                  <ArrowRightLeft className="w-5 h-5" />
-                  账龄分析: {financialData.agingAnalysis.subjectName}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-purple-700">
-                  期初: {formatCurrencyUniform(financialData.agingAnalysis.totalBeginning)} | 
-                  期末: {formatCurrencyUniform(financialData.agingAnalysis.totalEnding)} | 
-                  高风险: {formatCurrencyUniform(financialData.agingAnalysis.analysis.highRiskAmount)}
+// 审计标签页组件（简化版）
+import { Shield, FileCheck } from 'lucide-react';
+
+const AuditTab: React.FC<{ financialData: FinancialData }> = ({ financialData }) => {
+  // 简单的审计检查
+  const checks = [
+    { name: '资产负债表平衡', pass: Math.abs(financialData.totalAssets - financialData.totalLiabilities - financialData.totalEquity) < 1 },
+    { name: '利润表计算', pass: Math.abs(financialData.netProfit - (financialData.totalIncome - financialData.totalExpenses)) < 1 },
+    { name: '明细分类账数据', pass: financialData.ledgers.length > 0 },
+    { name: '财务概要信息', pass: financialData.financialSummary !== null },
+    { name: '账龄分析数据', pass: financialData.agingAnalysis !== null },
+  ];
+
+  const passedCount = checks.filter(c => c.pass).length;
+
+  return (
+    <div className="space-y-6">
+      {/* 审计概览 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-green-50 border-green-200">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="w-8 h-8 text-green-600" />
+              <div>
+                <p className="text-sm text-green-600">通过检查</p>
+                <p className="text-2xl font-bold text-green-800">{passedCount}/{checks.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <FileCheck className="w-8 h-8 text-blue-600" />
+              <div>
+                <p className="text-sm text-blue-600">数据完整性</p>
+                <p className="text-2xl font-bold text-blue-800">{Math.round((passedCount / checks.length) * 100)}%</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-purple-50 border-purple-200">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <Shield className="w-8 h-8 text-purple-600" />
+              <div>
+                <p className="text-sm text-purple-600">审计状态</p>
+                <p className="text-2xl font-bold text-purple-800">
+                  {passedCount === checks.length ? '通过' : '待完善'}
                 </p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 检查项列表 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Shield className="w-5 h-5 text-blue-600" />
+            数据完整性检查
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {checks.map((check, i) => (
+              <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <span className="text-gray-700">{check.name}</span>
+                <Badge variant={check.pass ? 'default' : 'secondary'} className={check.pass ? 'bg-green-500' : ''}>
+                  {check.pass ? '通过' : '未检测'}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 提示信息 */}
+      <div className="p-4 bg-blue-50 rounded-lg text-sm text-blue-700">
+        <p className="font-medium mb-1">审计说明</p>
+        <p>详细的科目明细账请切换到「明细账」标签页查看。财务概要信息和账龄分析可在对应数据检测后显示。</p>
+      </div>
     </div>
   );
 };

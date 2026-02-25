@@ -370,13 +370,15 @@ export const parseExcelFile = (file: File): Promise<FinancialData> => {
 const detectSheetType = (data: any[][], sheetName: string): string => {
   const nameLower = sheetName.toLowerCase();
   
+  // 优先检查特定类型（放在前面优先匹配）
   if (nameLower.includes('资产负债')) return 'balance';
   if (nameLower.includes('利润') || nameLower.includes('损益')) return 'income';
   if (nameLower.includes('现金') || nameLower.includes('cash')) return 'cashflow';
-  if (nameLower.includes('科目') || nameLower.includes('余额')) return 'subject';
+  // 明细分类账要在科目余额表之前检查
   if (nameLower.includes('明细') || nameLower.includes('ledger')) return 'ledger';
-  if (nameLower.includes('概要') || nameLower.includes('summary')) return 'summary';
   if (nameLower.includes('账龄') || nameLower.includes('aging')) return 'aging';
+  if (nameLower.includes('概要') || nameLower.includes('summary')) return 'summary';
+  if (nameLower.includes('科目') || nameLower.includes('余额')) return 'subject';
   
   const content = data.slice(0, 15).map(row => row.join(' ')).join(' ');
   
