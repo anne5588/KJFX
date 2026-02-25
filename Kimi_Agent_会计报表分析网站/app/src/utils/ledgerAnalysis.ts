@@ -79,6 +79,8 @@ export const parseLedgerSheet = (data: any[][]): LedgerData[] => {
   const ledgers: LedgerData[] = [];
   let currentLedger: LedgerData | null = null;
   
+  console.log(`[parseLedgerSheet] 开始解析，共 ${data.length} 行数据`);
+  
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
     if (!row || row.length < 5) continue;
@@ -86,8 +88,21 @@ export const parseLedgerSheet = (data: any[][]): LedgerData[] => {
     // 检测科目标题行（如"应收账款"、"银行存款"）
     const firstCell = String(row[0] || '').trim();
     
-    // 匹配科目标题（通常在表头或独立行）
-    if (firstCell.includes('科目：') || firstCell.match(/^\d+\s+.+账$/)) {
+    // 打印前几行用于调试
+    if (i < 10) {
+      console.log(`  行${i}: "${firstCell}" (${row.length}列)`);
+    }
+    
+    // 匹配科目标题（支持多种格式）
+    // 格式1: "科目：1001 库存现金"
+    // 格式2: "库存现金" (科目名称直接出现)
+    // 格式3: "1001 库存现金明细账"
+    const isSubjectHeader = firstCell.includes('科目：') || 
+                           firstCell.match(/^\d+\s+.+账$/) ||
+                           (firstCell.length > 1 && firstCell.length < 20 && !firstCell.includes('日期') && !firstCell.includes('编制'));
+    
+    if (isSubjectHeader) {
+      console.log(`  -> 检测到科目标题: "${firstCell}"`);
       // 保存上一个科目的数据
       if (currentLedger && currentLedger.entries.length > 0) {
         calculateLedgerTotals(currentLedger);
@@ -124,7 +139,9 @@ export const parseLedgerSheet = (data: any[][]): LedgerData[] => {
     
     // 解析明细记录
     // 格式：日期 | 凭证号 | 科目编码 | 科目名称 | 辅助核算 | 摘要 | 借方 | 贷方 | 方向 | 余额
-    if (currentLedger && firstCell.match(/^\d{4}[-/]\d{2}[-/]\d{2}$/)) {
+    // 支持多种日期格式：2026-01-01, 2026/01/01, 2026年01月01日
+    const datePattern = /^\d{4}([-/]\d{2}){2}$|^\d{4}年\d{1,2}月\d{1,2}日?$/;
+    if (currentLedger && firstCell.match(datePattern)) {
       const entry = parseLedgerEntry(row);
       if (entry) {
         currentLedger.entries.push(entry);
@@ -152,8 +169,10 @@ export const parseLedgerSheet = (data: any[][]): LedgerData[] => {
   if (currentLedger && currentLedger.entries.length > 0) {
     calculateLedgerTotals(currentLedger);
     ledgers.push(currentLedger);
+    console.log(`  -> 保存最后一个科目: ${currentLedger.subjectName}, ${currentLedger.entries.length}条记录`);
   }
   
+  console.log(`[parseLedgerSheet] 解析完成，共 ${ledgers.length} 个科目`);
   return ledgers;
 };
 
