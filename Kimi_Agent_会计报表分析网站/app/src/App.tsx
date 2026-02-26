@@ -31,7 +31,7 @@ import {
   deletePeriodData
 } from '@/utils/companyStorage';
 import { analyzeIncomeCostExpense, type IncomeCostExpenseAnalysis } from '@/utils/multiPeriodComparison';
-import MultiPeriodComparisonNew from '@/components/MultiPeriodComparisonNew';
+import ComprehensiveMultiPeriodReport from '@/components/ComprehensiveMultiPeriodReport';
 import { Toaster, toast } from 'sonner';
 import './styles/design-system.css';
 
@@ -704,7 +704,7 @@ function App() {
         {/* ========== 视图4：多期对比分析（新版UI） ========== */}
         {viewMode === 'multiPeriod' && multiPeriodAnalysis && currentCompany && (
           <div className="h-[calc(100vh-64px)] -m-6">
-            <MultiPeriodComparisonNew 
+            <ComprehensiveMultiPeriodReport 
               periods={currentCompany.periods}
               onClose={() => setViewMode('periods')}
             />
