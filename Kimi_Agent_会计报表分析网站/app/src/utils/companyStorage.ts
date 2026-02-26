@@ -46,6 +46,8 @@ const serializeFinancialData = (data: any): any => {
     beginningExpenses: serializeMap(data.beginningExpenses),
     // subjectBalance 是数组，直接保留
     subjectBalance: data.subjectBalance || [],
+    // rawTables 直接保留
+    rawTables: data.rawTables || {},
   };
 };
 
@@ -67,6 +69,8 @@ const restoreFinancialData = (data: any): FinancialData => {
     beginningExpenses: restoreMap(data.beginningExpenses),
     // subjectBalance 是数组，直接保留或初始化
     subjectBalance: data.subjectBalance || [],
+    // rawTables 直接保留或初始化
+    rawTables: data.rawTables || {},
   };
 };
 

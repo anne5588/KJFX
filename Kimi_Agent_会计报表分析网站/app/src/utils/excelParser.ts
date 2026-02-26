@@ -9,6 +9,13 @@ import { parseAgingAnalysis } from './agingAnalysis';
 
 // ==================== 类型定义 ====================
 
+// 原始表格数据（用于原样展示）
+export interface RawTableData {
+  sheetName: string;      // Excel中的Sheet名称
+  headers: string[];      // 表头
+  rows: any[][];          // 原始行数据
+}
+
 // 科目余额表条目
 export interface SubjectBalanceItem {
   code: string;           // 科目编码
@@ -65,6 +72,14 @@ export interface FinancialData {
   
   // 科目余额表（原始数据）
   subjectBalance: SubjectBalanceItem[];
+  
+  // 原始表格数据（用于报表查看原样展示）
+  rawTables: {
+    balanceSheet?: RawTableData;    // 资产负债表
+    incomeStatement?: RawTableData; // 利润表
+    cashflowStatement?: RawTableData; // 现金流量表
+    subjectBalance?: RawTableData;  // 科目余额表
+  };
 }
 
 // ==================== 智能列识别 ====================
@@ -327,15 +342,39 @@ export const parseExcelFile = (file: File): Promise<FinancialData> => {
           switch (sheetType) {
             case 'balance':
               parseBalanceSheetSmart(jsonData, allData);
+              // 保存原始数据
+              allData.rawTables.balanceSheet = {
+                sheetName,
+                headers: jsonData.length > 0 ? jsonData[0].map(String) : [],
+                rows: jsonData.slice(1)
+              };
               break;
             case 'income':
               parseIncomeStatementSmart(jsonData, allData);
+              // 保存原始数据
+              allData.rawTables.incomeStatement = {
+                sheetName,
+                headers: jsonData.length > 0 ? jsonData[0].map(String) : [],
+                rows: jsonData.slice(1)
+              };
               break;
             case 'cashflow':
               parseCashflowStatementSmart(jsonData, allData);
+              // 保存原始数据
+              allData.rawTables.cashflowStatement = {
+                sheetName,
+                headers: jsonData.length > 0 ? jsonData[0].map(String) : [],
+                rows: jsonData.slice(1)
+              };
               break;
             case 'subject':
               parseSubjectBalance(jsonData, allData);
+              // 保存原始数据
+              allData.rawTables.subjectBalance = {
+                sheetName,
+                headers: jsonData.length > 0 ? jsonData[0].map(String) : [],
+                rows: jsonData.slice(1)
+              };
               break;
             case 'ledger':
               const ledgers = parseLedgerSheet(jsonData);
@@ -856,6 +895,7 @@ const createEmptyFinancialData = (): FinancialData => ({
   financialSummary: null,
   agingAnalysis: null,
   subjectBalance: [],
+  rawTables: {},
 });
 
 const hasValidData = (data: FinancialData): boolean => {

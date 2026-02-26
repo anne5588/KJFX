@@ -1,5 +1,5 @@
 // ==================== 原始报表查看组件 ====================
-// 简单展示用户上传的财务报表原始数据
+// 原样展示用户上传的财务报表原始数据
 
 import React, { useState } from 'react';
 import type { FinancialData } from '@/utils/excelParser';
@@ -8,14 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { 
-  Calculator, 
-  Wallet,
   Building2,
-  PieChart,
   BarChart3,
   Activity,
   Clock,
-  AlertTriangle,
   BookOpen,
   ArrowRightLeft,
   ScrollText,
@@ -30,20 +26,23 @@ interface RawDataViewerProps {
   financialData: FinancialData;
 }
 
-// 格式化金额 - 统一显示为元，带千分位
-const formatAmount = (value: number): string => {
-  if (value === 0 || value === undefined || value === null) return '-';
-  // 统一显示为元，保留2位小数
-  return value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// 格式化金额
+const formatCellValue = (value: any): string => {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'number') {
+    return value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return String(value);
 };
 
-// 安全获取 Map 数据
-const safeGetMapEntries = (map: any): [string, number][] => {
-  if (!map) return [];
-  if (map instanceof Map) return Array.from(map.entries());
-  if (Array.isArray(map)) return map as [string, number][];
-  if (typeof map === 'object') return Object.entries(map).map(([k, v]) => [k, Number(v) || 0]);
-  return [];
+// 判断是否为数字
+const isNumeric = (value: any): boolean => {
+  if (typeof value === 'number') return true;
+  if (typeof value === 'string') {
+    const num = parseFloat(value.replace(/,/g, ''));
+    return !isNaN(num) && /^-?\d+(\.\d+)?$/.test(value.replace(/,/g, ''));
+  }
+  return false;
 };
 
 // 空数据提示组件
@@ -54,53 +53,84 @@ const EmptyDataTip: React.FC<{ message: string }> = ({ message }) => (
   </div>
 );
 
+// 原始表格组件
+const RawTable: React.FC<{ data: any[][]; headers?: string[] }> = ({ data, headers }) => {
+  if (!data || data.length === 0) return <EmptyDataTip message="无数据" />;
+  
+  const allRows = headers ? [headers, ...data] : data;
+  const maxCols = Math.max(...allRows.map(row => row?.length || 0));
+  
+  // 判断某列是否为金额列（数字比例高）
+  const isAmountCol = (colIndex: number): boolean => {
+    let numericCount = 0;
+    let totalCount = 0;
+    for (let i = 1; i < Math.min(allRows.length, 20); i++) {
+      const val = allRows[i]?.[colIndex];
+      if (val !== undefined && val !== null && val !== '') {
+        totalCount++;
+        if (isNumeric(val)) numericCount++;
+      }
+    }
+    return totalCount > 0 && numericCount / totalCount > 0.5;
+  };
+  
+  return (
+    <div className="overflow-auto max-h-[600px]">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-gray-100">
+            {Array.from({ length: maxCols }).map((_, idx) => (
+              <TableHead 
+                key={idx} 
+                className={`text-xs font-bold whitespace-nowrap ${isAmountCol(idx) ? 'text-right' : 'text-left'}`}
+              >
+                {headers?.[idx] || `列${idx + 1}`}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data.map((row, rowIdx) => (
+            <TableRow key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+              {Array.from({ length: maxCols }).map((_, colIdx) => {
+                const value = row?.[colIdx];
+                const isAmount = isAmountCol(colIdx);
+                const isBold = typeof value === 'string' && (
+                  value.includes('合计') || 
+                  value.includes('总计') || 
+                  value.includes('利润') ||
+                  value.includes('净利润')
+                );
+                
+                return (
+                  <TableCell 
+                    key={colIdx} 
+                    className={`text-xs py-1 whitespace-nowrap ${
+                      isAmount ? 'text-right font-mono' : 'text-left'
+                    } ${isBold ? 'font-bold bg-gray-100' : ''}`}
+                  >
+                    {formatCellValue(value)}
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+};
+
 const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
-  const [activeTab, setActiveTab] = useState('balance');
+  const [activeTab, setActiveTab] = useState('subject');
   const [expandedLedgers, setExpandedLedgers] = useState<Set<number>>(new Set());
   
-  // 安全获取数据
-  const assets = safeGetMapEntries(financialData?.assets);
-  const liabilities = safeGetMapEntries(financialData?.liabilities);
-  const equity = safeGetMapEntries(financialData?.equity);
-  const income = safeGetMapEntries(financialData?.income);
-  const expenses = safeGetMapEntries(financialData?.expenses);
-  
-  // 去重函数
-  const deduplicate = (entries: [string, number][]): [string, number][] => {
-    const seen = new Set<string>();
-    return entries.filter(([name]) => {
-      if (seen.has(name)) return false;
-      seen.add(name);
-      return true;
-    });
-  };
-  
-  // 准备数据 - 去重并过滤
-  const balanceSheetData = {
-    assets: deduplicate(assets.filter(([_, v]) => v !== 0)),
-    liabilities: deduplicate(liabilities.filter(([_, v]) => v !== 0)),
-    equity: deduplicate(equity.filter(([_, v]) => v !== 0)),
-  };
-  
-  const incomeStatementData = {
-    income: deduplicate(income.filter(([_, v]) => v !== 0)),
-    expenses: deduplicate(expenses.filter(([_, v]) => v !== 0)),
-  };
-  
-  // 计算各类合计
-  const totalAssetsCalculated = balanceSheetData.assets.reduce((sum, [_, v]) => sum + v, 0);
-  const totalLiabilitiesCalculated = balanceSheetData.liabilities.reduce((sum, [_, v]) => sum + v, 0);
-  const totalEquityCalculated = balanceSheetData.equity.reduce((sum, [_, v]) => sum + v, 0);
-  const totalIncomeCalculated = incomeStatementData.income.reduce((sum, [_, v]) => sum + v, 0);
-  const totalExpensesCalculated = incomeStatementData.expenses.reduce((sum, [_, v]) => sum + v, 0);
-  const netProfitCalculated = totalIncomeCalculated - totalExpensesCalculated;
-  
-  // 现金流量数据
-  const cashflowData = {
-    operating: financialData?.operatingCashflow || 0,
-    investing: financialData?.investingCashflow || 0,
-    financing: financialData?.financingCashflow || 0,
-  };
+  // 获取原始表格数据
+  const rawTables = financialData?.rawTables || {};
+  const subjectBalanceRaw = rawTables.subjectBalance;
+  const balanceSheetRaw = rawTables.balanceSheet;
+  const incomeStatementRaw = rawTables.incomeStatement;
+  const cashflowStatementRaw = rawTables.cashflowStatement;
   
   // 明细分类账
   const ledgers = financialData?.ledgers || [];
@@ -122,11 +152,6 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
     setExpandedLedgers(newSet);
   };
   
-  // 判断是否有数据
-  const hasBalanceData = balanceSheetData.assets.length > 0 || balanceSheetData.liabilities.length > 0 || balanceSheetData.equity.length > 0;
-  const hasIncomeData = incomeStatementData.income.length > 0 || incomeStatementData.expenses.length > 0;
-  const hasCashflowData = cashflowData.operating !== 0 || cashflowData.investing !== 0 || cashflowData.financing !== 0;
-  
   return (
     <div className="space-y-4">
       {/* 报表标签页 */}
@@ -135,7 +160,7 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
           <TabsTrigger value="subject" className="flex items-center gap-1 text-xs">
             <List className="w-3 h-3" />
             科目余额表
-            {financialData?.subjectBalance?.length > 0 && <Badge variant="secondary" className="text-[10px] ml-1">{financialData.subjectBalance.length}</Badge>}
+            {subjectBalanceRaw?.rows && subjectBalanceRaw.rows.length > 0 && <Badge variant="secondary" className="text-[10px] ml-1">{subjectBalanceRaw.rows.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="balance" className="flex items-center gap-1 text-xs">
             <Building2 className="w-3 h-3" />
@@ -172,46 +197,18 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
         
         {/* 科目余额表 */}
         <TabsContent value="subject" className="space-y-4">
-          {!financialData?.subjectBalance || financialData.subjectBalance.length === 0 ? (
-            <EmptyDataTip message="暂无科目余额表数据，请检查上传的Excel文件是否包含科目余额表" />
+          {!subjectBalanceRaw ? (
+            <EmptyDataTip message="暂无科目余额表数据" />
           ) : (
             <Card>
               <CardHeader className="bg-purple-50 py-3">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <List className="w-4 h-4 text-purple-600" />
-                  科目余额表
-                  <span className="text-xs text-gray-500 font-normal">({financialData.subjectBalance.length}项)</span>
+                  {subjectBalanceRaw.sheetName || '科目余额表'}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0 max-h-[600px] overflow-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50">
-                      <TableHead className="text-xs">科目编码</TableHead>
-                      <TableHead className="text-xs">科目名称</TableHead>
-                      <TableHead className="text-right text-xs">期初借方</TableHead>
-                      <TableHead className="text-right text-xs">期初贷方</TableHead>
-                      <TableHead className="text-right text-xs">本期借方</TableHead>
-                      <TableHead className="text-right text-xs">本期贷方</TableHead>
-                      <TableHead className="text-right text-xs">期末借方</TableHead>
-                      <TableHead className="text-right text-xs">期末贷方</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {financialData.subjectBalance.map((item, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="text-xs py-1 font-mono">{item.code}</TableCell>
-                        <TableCell className="text-sm py-1">{item.name}</TableCell>
-                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.openingDebit)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.openingCredit)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.currentDebit)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.currentCredit)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.closingDebit)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.closingCredit)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <CardContent className="p-0">
+                <RawTable data={subjectBalanceRaw.rows} headers={subjectBalanceRaw.headers} />
               </CardContent>
             </Card>
           )}
@@ -219,233 +216,37 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
         
         {/* 资产负债表 */}
         <TabsContent value="balance" className="space-y-4">
-          {!hasBalanceData ? (
-            <EmptyDataTip message="暂无资产负债表数据，请检查上传的Excel文件是否包含资产负债表" />
+          {!balanceSheetRaw ? (
+            <EmptyDataTip message="暂无资产负债表数据" />
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* 资产 */}
-              <Card>
-                <CardHeader className="bg-blue-50 py-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-blue-600" />
-                    资产
-                    <span className="text-xs text-gray-500 font-normal">({balanceSheetData.assets.length}项)</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 max-h-[500px] overflow-auto">
-                  {balanceSheetData.assets.length === 0 ? (
-                    <EmptyDataTip message="无资产数据" />
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-gray-50">
-                          <TableHead className="text-xs">项目</TableHead>
-                          <TableHead className="text-right text-xs">期末余额</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {balanceSheetData.assets.map(([name, value], idx) => (
-                          <TableRow key={idx}>
-                            <TableCell className="text-sm py-1">{name}</TableCell>
-                            <TableCell className="text-right font-mono text-sm py-1">{formatAmount(value)}</TableCell>
-                          </TableRow>
-                        ))}
-                        <TableRow className="bg-blue-50 font-bold">
-                          <TableCell className="py-2">资产总计</TableCell>
-                          <TableCell className="text-right font-mono py-2">{formatAmount(totalAssetsCalculated)}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-              
-              {/* 负债和权益 */}
-              <div className="space-y-4">
-                <Card>
-                  <CardHeader className="bg-rose-50 py-3">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Wallet className="w-4 h-4 text-rose-600" />
-                      负债
-                      <span className="text-xs text-gray-500 font-normal">({balanceSheetData.liabilities.length}项)</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-0 max-h-[250px] overflow-auto">
-                    {balanceSheetData.liabilities.length === 0 ? (
-                      <EmptyDataTip message="无负债数据" />
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-gray-50">
-                            <TableHead className="text-xs">项目</TableHead>
-                            <TableHead className="text-right text-xs">期末余额</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {balanceSheetData.liabilities.map(([name, value], idx) => (
-                            <TableRow key={idx}>
-                              <TableCell className="text-sm py-1">{name}</TableCell>
-                              <TableCell className="text-right font-mono text-sm py-1">{formatAmount(value)}</TableCell>
-                            </TableRow>
-                          ))}
-                          <TableRow className="bg-rose-50 font-bold">
-                            <TableCell className="py-2">负债合计</TableCell>
-                            <TableCell className="text-right font-mono py-2">{formatAmount(totalLiabilitiesCalculated)}</TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    )}
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader className="bg-emerald-50 py-3">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <PieChart className="w-4 h-4 text-emerald-600" />
-                      所有者权益
-                      <span className="text-xs text-gray-500 font-normal">({balanceSheetData.equity.length}项)</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-0 max-h-[200px] overflow-auto">
-                    {balanceSheetData.equity.length === 0 ? (
-                      <EmptyDataTip message="无权益数据" />
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-gray-50">
-                            <TableHead className="text-xs">项目</TableHead>
-                            <TableHead className="text-right text-xs">期末余额</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {balanceSheetData.equity.map(([name, value], idx) => (
-                            <TableRow key={idx}>
-                              <TableCell className="text-sm py-1">{name}</TableCell>
-                              <TableCell className="text-right font-mono text-sm py-1">{formatAmount(value)}</TableCell>
-                            </TableRow>
-                          ))}
-                          <TableRow className="bg-emerald-50 font-bold">
-                            <TableCell className="py-2">所有者权益合计</TableCell>
-                            <TableCell className="text-right font-mono py-2">{formatAmount(totalEquityCalculated)}</TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+            <Card>
+              <CardHeader className="bg-blue-50 py-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-blue-600" />
+                  {balanceSheetRaw.sheetName || '资产负债表'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <RawTable data={balanceSheetRaw.rows} headers={balanceSheetRaw.headers} />
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
         
         {/* 利润表 */}
         <TabsContent value="income" className="space-y-4">
-          {!hasIncomeData ? (
-            <EmptyDataTip message="暂无利润表数据，请检查上传的Excel文件是否包含利润表" />
+          {!incomeStatementRaw ? (
+            <EmptyDataTip message="暂无利润表数据" />
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* 收入 */}
-              <Card>
-                <CardHeader className="bg-blue-50 py-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-blue-600" />
-                    收入
-                    <span className="text-xs text-gray-500 font-normal">({incomeStatementData.income.length}项)</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 max-h-[400px] overflow-auto">
-                  {incomeStatementData.income.length === 0 ? (
-                    <EmptyDataTip message="无收入数据" />
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-gray-50">
-                          <TableHead className="text-xs">项目</TableHead>
-                          <TableHead className="text-right text-xs">本期金额</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {incomeStatementData.income.map(([name, value], idx) => (
-                          <TableRow key={idx}>
-                            <TableCell className="text-sm py-1">{name}</TableCell>
-                            <TableCell className="text-right font-mono text-sm py-1">{formatAmount(value)}</TableCell>
-                          </TableRow>
-                        ))}
-                        <TableRow className="bg-blue-50 font-bold">
-                          <TableCell className="py-2">收入合计</TableCell>
-                          <TableCell className="text-right font-mono py-2">{formatAmount(totalIncomeCalculated)}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-              
-              {/* 成本和费用 */}
-              <Card>
-                <CardHeader className="bg-rose-50 py-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Calculator className="w-4 h-4 text-rose-600" />
-                    成本费用
-                    <span className="text-xs text-gray-500 font-normal">({incomeStatementData.expenses.length}项)</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 max-h-[400px] overflow-auto">
-                  {incomeStatementData.expenses.length === 0 ? (
-                    <EmptyDataTip message="无成本费用数据" />
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-gray-50">
-                          <TableHead className="text-xs">项目</TableHead>
-                          <TableHead className="text-right text-xs">本期金额</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {incomeStatementData.expenses.map(([name, value], idx) => (
-                          <TableRow key={idx}>
-                            <TableCell className="text-sm py-1">{name}</TableCell>
-                            <TableCell className="text-right font-mono text-sm py-1">{formatAmount(value)}</TableCell>
-                          </TableRow>
-                        ))}
-                        <TableRow className="bg-rose-50 font-bold">
-                          <TableCell className="py-2">成本费用合计</TableCell>
-                          <TableCell className="text-right font-mono py-2">{formatAmount(totalExpensesCalculated)}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-          
-          {/* 利润计算 */}
-          {hasIncomeData && (
-            <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
-              <CardHeader className="py-3">
+            <Card>
+              <CardHeader className="bg-emerald-50 py-3">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Calculator className="w-4 h-4 text-amber-600" />
-                  利润计算
+                  <BarChart3 className="w-4 h-4 text-emerald-600" />
+                  {incomeStatementRaw.sheetName || '利润表'}
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between items-center py-1 border-b border-amber-100">
-                    <span className="text-gray-600">收入合计</span>
-                    <span className="font-mono font-medium text-blue-600">{formatAmount(totalIncomeCalculated)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1 border-b border-amber-100">
-                    <span className="text-gray-600">减：成本费用合计</span>
-                    <span className="font-mono font-medium text-rose-600">{formatAmount(totalExpensesCalculated)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 bg-amber-100 px-3 rounded">
-                    <span className="font-bold">净利润</span>
-                    <span className={`font-mono font-bold text-lg ${netProfitCalculated >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {formatAmount(netProfitCalculated)}
-                    </span>
-                  </div>
-                </div>
+              <CardContent className="p-0">
+                <RawTable data={incomeStatementRaw.rows} headers={incomeStatementRaw.headers} />
               </CardContent>
             </Card>
           )}
@@ -453,45 +254,18 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
         
         {/* 现金流量表 */}
         <TabsContent value="cashflow" className="space-y-4">
-          {!hasCashflowData ? (
-            <EmptyDataTip message="暂无现金流量表数据，请检查上传的Excel文件是否包含现金流量表" />
+          {!cashflowStatementRaw ? (
+            <EmptyDataTip message="暂无现金流量表数据" />
           ) : (
             <Card>
-              <CardHeader className="py-3">
+              <CardHeader className="bg-cyan-50 py-3">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <ArrowRightLeft className="w-4 h-4" />
-                  现金流量
+                  <ArrowRightLeft className="w-4 h-4 text-cyan-600" />
+                  {cashflowStatementRaw.sheetName || '现金流量表'}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50">
-                      <TableHead className="text-xs">项目</TableHead>
-                      <TableHead className="text-right text-xs">本期金额</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="text-sm py-2">经营活动产生的现金流量净额</TableCell>
-                      <TableCell className={`text-right font-mono text-sm py-2 ${cashflowData.operating >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {formatAmount(cashflowData.operating)}
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="text-sm py-2">投资活动产生的现金流量净额</TableCell>
-                      <TableCell className={`text-right font-mono text-sm py-2 ${cashflowData.investing >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {formatAmount(cashflowData.investing)}
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="text-sm py-2">筹资活动产生的现金流量净额</TableCell>
-                      <TableCell className={`text-right font-mono text-sm py-2 ${cashflowData.financing >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {formatAmount(cashflowData.financing)}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
+                <RawTable data={cashflowStatementRaw.rows} headers={cashflowStatementRaw.headers} />
               </CardContent>
             </Card>
           )}
@@ -500,7 +274,7 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
         {/* 明细分类账 */}
         <TabsContent value="ledger" className="space-y-3">
           {ledgers.length === 0 ? (
-            <EmptyDataTip message="未检测到明细分类账数据，请检查上传的Excel文件是否包含明细分类账表" />
+            <EmptyDataTip message="未检测到明细分类账数据" />
           ) : (
             ledgers.map((ledger, idx) => (
               <Card key={idx} className="overflow-hidden">
@@ -514,8 +288,8 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                     <Badge variant="secondary" className="text-xs">{ledger.entries.length} 笔</Badge>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-gray-500">
-                    <span>借: {formatAmount(ledger.totalDebit)}</span>
-                    <span>贷: {formatAmount(ledger.totalCredit)}</span>
+                    <span>借: {ledger.totalDebit.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
+                    <span>贷: {ledger.totalCredit.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
                   </div>
                 </div>
                 
@@ -538,9 +312,9 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                             <TableCell className="text-xs py-1">{entry.date}</TableCell>
                             <TableCell className="text-xs py-1">{entry.voucherNo}</TableCell>
                             <TableCell className="text-xs py-1 max-w-[200px] truncate" title={entry.summary}>{entry.summary}</TableCell>
-                            <TableCell className="text-right font-mono text-xs py-1">{entry.debit > 0 ? formatAmount(entry.debit) : ''}</TableCell>
-                            <TableCell className="text-right font-mono text-xs py-1">{entry.credit > 0 ? formatAmount(entry.credit) : ''}</TableCell>
-                            <TableCell className="text-right font-mono text-xs py-1">{formatAmount(entry.balance)}</TableCell>
+                            <TableCell className="text-right font-mono text-xs py-1">{entry.debit > 0 ? entry.debit.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : ''}</TableCell>
+                            <TableCell className="text-right font-mono text-xs py-1">{entry.credit > 0 ? entry.credit.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : ''}</TableCell>
+                            <TableCell className="text-right font-mono text-xs py-1">{entry.balance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</TableCell>
                           </TableRow>
                         ))}
                         {ledger.entries.length > 50 && (
@@ -562,73 +336,57 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
         {/* 账龄分析 */}
         <TabsContent value="aging" className="space-y-4">
           {!agingAnalysis ? (
-            <EmptyDataTip message="未检测到账龄分析表，请检查上传的Excel文件是否包含账龄分析表" />
+            <EmptyDataTip message="未检测到账龄分析表" />
           ) : (
-            <>
-              <Card>
-                <CardHeader className="py-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <ScrollText className="w-4 h-4" />
-                    {agingAnalysis.subjectCode} {agingAnalysis.subjectName}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 max-h-[500px] overflow-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="text-xs">单位/项目</TableHead>
-                        <TableHead className="text-right text-xs">期末余额</TableHead>
-                        <TableHead className="text-right text-xs">0-30天</TableHead>
-                        <TableHead className="text-right text-xs">30-90天</TableHead>
-                        <TableHead className="text-right text-xs">90-360天</TableHead>
-                        <TableHead className="text-right text-xs">360天+</TableHead>
+            <Card>
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ScrollText className="w-4 h-4" />
+                  {agingAnalysis.subjectCode} {agingAnalysis.subjectName}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 max-h-[500px] overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50">
+                      <TableHead className="text-xs">单位/项目</TableHead>
+                      <TableHead className="text-right text-xs">期末余额</TableHead>
+                      <TableHead className="text-right text-xs">0-30天</TableHead>
+                      <TableHead className="text-right text-xs">30-90天</TableHead>
+                      <TableHead className="text-right text-xs">90-360天</TableHead>
+                      <TableHead className="text-right text-xs">360天+</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {agingAnalysis.items.map((item, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="text-sm py-1">{item.name || item.code}</TableCell>
+                        <TableCell className="text-right font-mono text-sm py-1">{item.endingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-right font-mono text-xs py-1">{item.days0_30.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-right font-mono text-xs py-1">{(item.days30_60 + item.days60_90).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-right font-mono text-xs py-1">{(item.days90_180 + item.days180_360).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-right font-mono text-xs py-1 text-rose-600">{(item.days360_1080 + item.days1080plus).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {agingAnalysis.items.map((item, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell className="text-sm py-1">{item.name || item.code}</TableCell>
-                          <TableCell className="text-right font-mono text-sm py-1">{formatAmount(item.endingBalance)}</TableCell>
-                          <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.days0_30)}</TableCell>
-                          <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.days30_60 + item.days60_90)}</TableCell>
-                          <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.days90_180 + item.days180_360)}</TableCell>
-                          <TableCell className="text-right font-mono text-xs py-1 text-rose-600">{formatAmount(item.days360_1080 + item.days1080plus)}</TableCell>
-                        </TableRow>
-                      ))}
-                      <TableRow className="bg-gray-50 font-bold">
-                        <TableCell className="py-2">合计</TableCell>
-                        <TableCell className="text-right font-mono py-2">{formatAmount(agingAnalysis.totalEnding)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs py-2">{formatAmount(agingAnalysis.totalDays0_30)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs py-2">{formatAmount(agingAnalysis.totalDays30_60 + agingAnalysis.totalDays60_90)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs py-2">{formatAmount(agingAnalysis.totalDays90_180 + agingAnalysis.totalDays180_360)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs py-2 text-rose-600">{formatAmount(agingAnalysis.totalDays360_1080 + agingAnalysis.totalDays1080plus)}</TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-              
-              {agingAnalysis.analysis.suggestions.length > 0 && (
-                <Card className="bg-amber-50 border-amber-200">
-                  <CardHeader className="py-3">
-                    <CardTitle className="text-sm flex items-center gap-2 text-amber-800">
-                      <AlertTriangle className="w-4 h-4" />
-                      风险提示
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-amber-800">{agingAnalysis.analysis.riskAssessment}</p>
-                  </CardContent>
-                </Card>
-              )}
-            </>
+                    ))}
+                    <TableRow className="bg-gray-50 font-bold">
+                      <TableCell className="py-2">合计</TableCell>
+                      <TableCell className="text-right font-mono py-2">{agingAnalysis.totalEnding.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-right font-mono text-xs py-2">{agingAnalysis.totalDays0_30.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-right font-mono text-xs py-2">{(agingAnalysis.totalDays30_60 + agingAnalysis.totalDays60_90).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-right font-mono text-xs py-2">{(agingAnalysis.totalDays90_180 + agingAnalysis.totalDays180_360).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-right font-mono text-xs py-2 text-rose-600">{(agingAnalysis.totalDays360_1080 + agingAnalysis.totalDays1080plus).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
         
         {/* 财务概要 */}
         <TabsContent value="summary" className="space-y-4">
           {!summary ? (
-            <EmptyDataTip message="未检测到财务概要信息表，请检查上传的Excel文件是否包含财务概要信息表" />
+            <EmptyDataTip message="未检测到财务概要信息表" />
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {summary.revenue && (
@@ -637,7 +395,7 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                     <CardTitle className="text-sm text-gray-500">营业收入</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-lg font-bold text-blue-600">{formatAmount(summary.revenue.currentPeriodAmount)}</p>
+                    <p className="text-lg font-bold text-blue-600">{summary.revenue.currentPeriodAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</p>
                   </CardContent>
                 </Card>
               )}
@@ -649,7 +407,7 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                   </CardHeader>
                   <CardContent>
                     <p className={`text-lg font-bold ${summary.netProfit.currentPeriodAmount >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {formatAmount(summary.netProfit.currentPeriodAmount)}
+                      {summary.netProfit.currentPeriodAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
                     </p>
                   </CardContent>
                 </Card>
@@ -683,7 +441,7 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                     <CardTitle className="text-sm text-gray-500">应收款</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-lg font-bold text-cyan-600">{formatAmount(summary.receivables.currentPeriodAmount)}</p>
+                    <p className="text-lg font-bold text-cyan-600">{summary.receivables.currentPeriodAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</p>
                   </CardContent>
                 </Card>
               )}
@@ -695,7 +453,7 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                   </CardHeader>
                   <CardContent>
                     <p className={`text-lg font-bold ${summary.fundBalance.currentPeriodAmount >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {formatAmount(summary.fundBalance.currentPeriodAmount)}
+                      {summary.fundBalance.currentPeriodAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
                     </p>
                   </CardContent>
                 </Card>
