@@ -129,6 +129,48 @@ function App() {
     }
   };
 
+  // 多选删除状态
+  const [selectedPeriods, setSelectedPeriods] = useState<Set<string>>(new Set());
+
+  // 切换期间选中状态
+  const togglePeriodSelection = (periodId: string) => {
+    const newSet = new Set(selectedPeriods);
+    if (newSet.has(periodId)) {
+      newSet.delete(periodId);
+    } else {
+      newSet.add(periodId);
+    }
+    setSelectedPeriods(newSet);
+  };
+
+  // 全选/取消全选
+  const toggleAllSelection = () => {
+    if (!currentCompany) return;
+    if (selectedPeriods.size === currentCompany.periods.length) {
+      setSelectedPeriods(new Set());
+    } else {
+      setSelectedPeriods(new Set(currentCompany.periods.map(p => p.id)));
+    }
+  };
+
+  // 批量删除期间
+  const handleBatchDeletePeriods = () => {
+    if (!currentCompany || selectedPeriods.size === 0) return;
+    if (confirm(`确定要删除选中的 ${selectedPeriods.size} 个期间数据吗？`)) {
+      selectedPeriods.forEach(periodId => {
+        deletePeriodData(currentCompany.id, periodId);
+      });
+      const updated = getAllCompanies();
+      setCompanies(updated);
+      const updatedCurrent = updated.find(c => c.id === currentCompany.id);
+      if (updatedCurrent) {
+        setCurrentCompanyState(updatedCurrent);
+      }
+      setSelectedPeriods(new Set());
+      toast.success(`已删除 ${selectedPeriods.size} 个期间数据`);
+    }
+  };
+
   // 从文件名提取期间
   const extractPeriodFromFilename = (filename: string): string => {
     // 匹配模式：202601、2026-01、2026年1月
@@ -160,6 +202,14 @@ function App() {
     if (!finalPeriod) {
       toast.error('请输入期间（如：2024年Q1），或确保文件名包含日期信息');
       return;
+    }
+
+    // 检查是否已存在同名期间
+    const existingPeriod = currentCompany.periods.find(p => p.period === finalPeriod);
+    if (existingPeriod) {
+      if (!confirm(`期间 "${finalPeriod}" 已存在，是否覆盖？`)) {
+        return;
+      }
     }
 
     setIsProcessing(true);
@@ -233,6 +283,21 @@ function App() {
     if (!currentCompany) {
       toast.error('请先选择或创建公司');
       return;
+    }
+
+    // 先检查是否有同名期间
+    const duplicatePeriods: string[] = [];
+    for (const file of files) {
+      const period = extractPeriodFromFilename(file.name);
+      if (period && currentCompany.periods.find(p => p.period === period)) {
+        duplicatePeriods.push(period);
+      }
+    }
+    
+    if (duplicatePeriods.length > 0) {
+      if (!confirm(`以下期间已存在，是否覆盖？\n${duplicatePeriods.join('、')}`)) {
+        return;
+      }
     }
 
     setBatchFiles(files);
@@ -585,12 +650,31 @@ function App() {
             {/* 期间数据表格 - 现代化样式 */}
             {currentCompany.periods.length > 0 ? (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
                   <h3 className="font-semibold text-gray-900">期间数据列表</h3>
+                  {selectedPeriods.size > 0 && (
+                    <Button 
+                      variant="destructive" 
+                      size="sm"
+                      onClick={handleBatchDeletePeriods}
+                      className="gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      删除选中 ({selectedPeriods.size})
+                    </Button>
+                  )}
                 </div>
                 <table className="w-full">
                   <thead>
                     <tr className="bg-gray-50/80">
+                      <th className="px-3 py-4 text-center w-12">
+                        <input
+                          type="checkbox"
+                          checked={selectedPeriods.size === currentCompany.periods.length && currentCompany.periods.length > 0}
+                          onChange={toggleAllSelection}
+                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">期间</th>
                       <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">营业收入</th>
                       <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">营业成本</th>
@@ -603,9 +687,17 @@ function App() {
                     {[...currentCompany.periods].sort((a, b) => a.periodDate.localeCompare(b.periodDate)).map((period, index) => (
                       <tr 
                         key={period.id} 
-                        className="hover:bg-blue-50/30 transition-colors group"
+                        className={`hover:bg-blue-50/30 transition-colors group ${selectedPeriods.has(period.id) ? 'bg-blue-50/50' : ''}`}
                         style={{ animationDelay: `${index * 50}ms` }}
                       >
+                        <td className="px-3 py-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedPeriods.has(period.id)}
+                            onChange={() => togglePeriodSelection(period.id)}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
