@@ -9,6 +9,18 @@ import { parseAgingAnalysis } from './agingAnalysis';
 
 // ==================== 类型定义 ====================
 
+// 科目余额表条目
+export interface SubjectBalanceItem {
+  code: string;           // 科目编码
+  name: string;           // 科目名称
+  openingDebit: number;   // 期初借方余额
+  openingCredit: number;  // 期初贷方余额
+  currentDebit: number;   // 本期借方发生额
+  currentCredit: number;  // 本期贷方发生额
+  closingDebit: number;   // 期末借方余额
+  closingCredit: number;  // 期末贷方余额
+}
+
 export interface FinancialData {
   // 当期数据（期末/本期）
   assets: Map<string, number>;
@@ -50,6 +62,9 @@ export interface FinancialData {
   
   // 账龄分析表
   agingAnalysis: AgingAnalysis | null;
+  
+  // 科目余额表（原始数据）
+  subjectBalance: SubjectBalanceItem[];
 }
 
 // ==================== 智能列识别 ====================
@@ -716,6 +731,10 @@ const parseSubjectBalance = (data: any[][], result: FinancialData): void => {
   let headerRow = -1;
   let codeCol = -1;
   let nameCol = -1;
+  let openingDebitCol = -1;
+  let openingCreditCol = -1;
+  let currentDebitCol = -1;
+  let currentCreditCol = -1;
   let closingDebitCol = -1;
   let closingCreditCol = -1;
   
@@ -729,9 +748,26 @@ const parseSubjectBalance = (data: any[][], result: FinancialData): void => {
       if ((cell.includes('科目编码') || cell.includes('科目代码')) && codeCol === -1) {
         codeCol = j;
       }
-      if ((cell.includes('科目名称') || (cell.includes('科目') && !cell.includes('编码'))) && nameCol === -1) {
+      if ((cell.includes('科目名称') || (cell.includes('科目') && !cell.includes('编码') && !cell.includes('代码'))) && nameCol === -1) {
         nameCol = j;
       }
+      // 期初余额
+      if ((cell.includes('期初') || cell.includes('年初')) && cell.includes('借方') && openingDebitCol === -1) {
+        openingDebitCol = j;
+      }
+      if ((cell.includes('期初') || cell.includes('年初')) && cell.includes('贷方') && openingCreditCol === -1) {
+        openingCreditCol = j;
+      }
+      // 本期发生额
+      if ((cell.includes('本期') || cell.includes('本年')) && !cell.includes('期末') && !cell.includes('期初') && 
+          (cell.includes('借方') || cell.includes('借')) && currentDebitCol === -1) {
+        currentDebitCol = j;
+      }
+      if ((cell.includes('本期') || cell.includes('本年')) && !cell.includes('期末') && !cell.includes('期初') && 
+          (cell.includes('贷方') || cell.includes('贷')) && currentCreditCol === -1) {
+        currentCreditCol = j;
+      }
+      // 期末余额
       if (cell.includes('期末') && cell.includes('借方') && closingDebitCol === -1) {
         closingDebitCol = j;
       }
@@ -746,6 +782,8 @@ const parseSubjectBalance = (data: any[][], result: FinancialData): void => {
     }
   }
   
+  console.log('科目余额表列识别:', { headerRow, codeCol, nameCol, openingDebitCol, openingCreditCol, currentDebitCol, currentCreditCol, closingDebitCol, closingCreditCol });
+  
   if (headerRow === -1) return;
   
   for (let i = headerRow + 1; i < data.length; i++) {
@@ -757,11 +795,29 @@ const parseSubjectBalance = (data: any[][], result: FinancialData): void => {
     
     if (!name && !code) continue;
     
+    const openingDebit = openingDebitCol !== -1 ? extractNumber(row[openingDebitCol]) : 0;
+    const openingCredit = openingCreditCol !== -1 ? extractNumber(row[openingCreditCol]) : 0;
+    const currentDebit = currentDebitCol !== -1 ? extractNumber(row[currentDebitCol]) : 0;
+    const currentCredit = currentCreditCol !== -1 ? extractNumber(row[currentCreditCol]) : 0;
     const closingDebit = closingDebitCol !== -1 ? extractNumber(row[closingDebitCol]) : 0;
     const closingCredit = closingCreditCol !== -1 ? extractNumber(row[closingCreditCol]) : 0;
     
+    // 保存原始科目余额数据
+    result.subjectBalance.push({
+      code,
+      name,
+      openingDebit,
+      openingCredit,
+      currentDebit,
+      currentCredit,
+      closingDebit,
+      closingCredit,
+    });
+    
     classifySubjectItem(name, code, closingDebit, closingCredit, result);
   }
+  
+  console.log(`解析到 ${result.subjectBalance.length} 条科目余额记录`);
 };
 
 // ==================== 工具函数 ====================
@@ -799,6 +855,7 @@ const createEmptyFinancialData = (): FinancialData => ({
   ledgers: [],
   financialSummary: null,
   agingAnalysis: null,
+  subjectBalance: [],
 });
 
 const hasValidData = (data: FinancialData): boolean => {

@@ -22,7 +22,8 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
-  FileX
+  FileX,
+  List
 } from 'lucide-react';
 
 interface RawDataViewerProps {
@@ -130,7 +131,12 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
     <div className="space-y-4">
       {/* 报表标签页 */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
+          <TabsTrigger value="subject" className="flex items-center gap-1 text-xs">
+            <List className="w-3 h-3" />
+            科目余额表
+            {financialData?.subjectBalance?.length > 0 && <Badge variant="secondary" className="text-[10px] ml-1">{financialData.subjectBalance.length}</Badge>}
+          </TabsTrigger>
           <TabsTrigger value="balance" className="flex items-center gap-1 text-xs">
             <Building2 className="w-3 h-3" />
             资产负债表
@@ -163,6 +169,53 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
             勾稽检查
           </TabsTrigger>
         </TabsList>
+        
+        {/* 科目余额表 */}
+        <TabsContent value="subject" className="space-y-4">
+          {!financialData?.subjectBalance || financialData.subjectBalance.length === 0 ? (
+            <EmptyDataTip message="暂无科目余额表数据，请检查上传的Excel文件是否包含科目余额表" />
+          ) : (
+            <Card>
+              <CardHeader className="bg-purple-50 py-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <List className="w-4 h-4 text-purple-600" />
+                  科目余额表
+                  <span className="text-xs text-gray-500 font-normal">({financialData.subjectBalance.length}项)</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 max-h-[600px] overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50">
+                      <TableHead className="text-xs">科目编码</TableHead>
+                      <TableHead className="text-xs">科目名称</TableHead>
+                      <TableHead className="text-right text-xs">期初借方</TableHead>
+                      <TableHead className="text-right text-xs">期初贷方</TableHead>
+                      <TableHead className="text-right text-xs">本期借方</TableHead>
+                      <TableHead className="text-right text-xs">本期贷方</TableHead>
+                      <TableHead className="text-right text-xs">期末借方</TableHead>
+                      <TableHead className="text-right text-xs">期末贷方</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {financialData.subjectBalance.map((item, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="text-xs py-1 font-mono">{item.code}</TableCell>
+                        <TableCell className="text-sm py-1">{item.name}</TableCell>
+                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.openingDebit)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.openingCredit)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.currentDebit)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.currentCredit)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.closingDebit)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs py-1">{formatAmount(item.closingCredit)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
         
         {/* 资产负债表 */}
         <TabsContent value="balance" className="space-y-4">
