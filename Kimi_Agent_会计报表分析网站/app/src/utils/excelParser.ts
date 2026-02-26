@@ -75,10 +75,12 @@ export interface FinancialData {
   
   // 原始表格数据（用于报表查看原样展示）
   rawTables: {
-    balanceSheet?: RawTableData;    // 资产负债表
-    incomeStatement?: RawTableData; // 利润表
-    cashflowStatement?: RawTableData; // 现金流量表
-    subjectBalance?: RawTableData;  // 科目余额表
+    balanceSheet?: RawTableData;       // 资产负债表
+    incomeStatement?: RawTableData;    // 利润表
+    incomeAppendix?: RawTableData;     // 利润表附表
+    cashflowStatement?: RawTableData;  // 现金流量表
+    equityStatement?: RawTableData;    // 权益变动表
+    subjectBalance?: RawTableData;     // 科目余额表
   };
 }
 
@@ -367,6 +369,22 @@ export const parseExcelFile = (file: File): Promise<FinancialData> => {
                 rows: jsonData
               };
               break;
+            case 'equity':
+              // 权益变动表 - 直接保存原始数据
+              allData.rawTables.equityStatement = {
+                sheetName,
+                headers: [],
+                rows: jsonData
+              };
+              break;
+            case 'incomeAppendix':
+              // 利润表附表 - 直接保存原始数据
+              allData.rawTables.incomeAppendix = {
+                sheetName,
+                headers: [],
+                rows: jsonData
+              };
+              break;
             case 'subject':
               parseSubjectBalance(jsonData, allData);
               // 保存原始数据 - 保留所有行，不做表头分离
@@ -438,20 +456,33 @@ const detectSheetType = (data: any[][], sheetName: string): string => {
   // 优先检查特定类型（放在前面优先匹配）
   // 更精确的匹配：排除"附表"、"明细"等后缀
   if (nameLower.includes('资产负债') && !nameLower.includes('附表')) { console.log('      -> match: balance'); return 'balance'; }
-  // 利润表：包含"利润"但不包含"附表"、"明细"
-  if ((nameLower === '利润表' || nameLower.includes('利润表') || nameLower.includes('损益')) && 
-      !nameLower.includes('附表') && !nameLower.includes('明细')) { 
+  
+  // 利润表：严格匹配，排除"附表"、"明细"
+  // 注意顺序：先检查"利润表附表"，如果不是再检查"利润表"
+  if (nameLower.includes('利润表附表') || nameLower.includes('利润附表')) { 
+    console.log('      -> match: incomeAppendix'); return 'incomeAppendix'; 
+  }
+  if ((nameLower === '利润表' || nameLower === '损益表') || 
+      (nameLower.includes('利润') && !nameLower.includes('附表') && !nameLower.includes('明细'))) { 
     console.log('      -> match: income'); return 'income'; 
   }
+  
   // 现金流量表：排除附表
   if ((nameLower.includes('现金') || nameLower.includes('cash')) && !nameLower.includes('附表')) { 
     console.log('      -> match: cashflow'); return 'cashflow'; 
   }
+  
+  // 权益变动表
+  if (nameLower.includes('权益') || nameLower.includes('权益变动') || nameLower.includes('所有者权益')) { 
+    console.log('      -> match: equity'); return 'equity'; 
+  }
+  
   // 明细分类账要在科目余额表之前检查
   if (nameLower.includes('明细')) { console.log('      -> match: ledger (by name)'); return 'ledger'; }
   if (nameLower.includes('ledger')) { console.log('      -> match: ledger (by ledger)'); return 'ledger'; }
   if (nameLower.includes('账龄') || nameLower.includes('aging')) { console.log('      -> match: aging'); return 'aging'; }
   if (nameLower.includes('概要') || nameLower.includes('summary')) { console.log('      -> match: summary'); return 'summary'; }
+  
   // 科目余额表：排除明细账
   if ((nameLower.includes('科目') || nameLower.includes('余额')) && !nameLower.includes('明细')) { 
     console.log('      -> match: subject'); return 'subject'; 
