@@ -8,7 +8,6 @@ import {
   Building2,
   Plus,
   ChevronLeft,
-  TrendingUp,
   Calendar,
   Trash2,
   ArrowLeftRight
@@ -33,6 +32,7 @@ import {
   deletePeriodData
 } from '@/utils/companyStorage';
 import { analyzeIncomeCostExpense, type IncomeCostExpenseAnalysis } from '@/utils/multiPeriodComparison';
+import MultiPeriodComparisonNew from '@/components/MultiPeriodComparisonNew';
 import { Toaster, toast } from 'sonner';
 
 // 视图模式
@@ -713,118 +713,13 @@ function App() {
           </div>
         )}
 
-        {/* ========== 视图4：多期对比分析 ========== */}
+        {/* ========== 视图4：多期对比分析（新版UI） ========== */}
         {viewMode === 'multiPeriod' && multiPeriodAnalysis && currentCompany && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => setViewMode('periods')}
-                className="gap-2"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                返回
-              </Button>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">{currentCompany.name}</h2>
-                <p className="text-gray-500">多期收入/成本/费用对比分析</p>
-              </div>
-            </div>
-
-            {/* 趋势概览卡片 */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Card className={multiPeriodAnalysis.trends.revenueTrend === 'up' ? 'bg-green-50 border-green-200' : multiPeriodAnalysis.trends.revenueTrend === 'down' ? 'bg-red-50 border-red-200' : 'bg-gray-50'}>
-                <CardContent className="p-4">
-                  <p className="text-sm text-gray-600">收入趋势</p>
-                  <p className={`text-2xl font-bold ${multiPeriodAnalysis.trends.revenueTrend === 'up' ? 'text-green-700' : multiPeriodAnalysis.trends.revenueTrend === 'down' ? 'text-red-700' : 'text-gray-700'}`}>
-                    {multiPeriodAnalysis.trends.revenueTrend === 'up' ? '↗ 上升' : multiPeriodAnalysis.trends.revenueTrend === 'down' ? '↘ 下降' : '→ 稳定'}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card className={multiPeriodAnalysis.trends.costTrend === 'up' ? 'bg-red-50 border-red-200' : multiPeriodAnalysis.trends.costTrend === 'down' ? 'bg-green-50 border-green-200' : 'bg-gray-50'}>
-                <CardContent className="p-4">
-                  <p className="text-sm text-gray-600">成本趋势</p>
-                  <p className={`text-2xl font-bold ${multiPeriodAnalysis.trends.costTrend === 'up' ? 'text-red-700' : multiPeriodAnalysis.trends.costTrend === 'down' ? 'text-green-700' : 'text-gray-700'}`}>
-                    {multiPeriodAnalysis.trends.costTrend === 'up' ? '↗ 上升' : multiPeriodAnalysis.trends.costTrend === 'down' ? '↘ 下降' : '→ 稳定'}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card className={multiPeriodAnalysis.trends.expenseTrend === 'up' ? 'bg-red-50 border-red-200' : multiPeriodAnalysis.trends.expenseTrend === 'down' ? 'bg-green-50 border-green-200' : 'bg-gray-50'}>
-                <CardContent className="p-4">
-                  <p className="text-sm text-gray-600">费用趋势</p>
-                  <p className={`text-2xl font-bold ${multiPeriodAnalysis.trends.expenseTrend === 'up' ? 'text-red-700' : multiPeriodAnalysis.trends.expenseTrend === 'down' ? 'text-green-700' : 'text-gray-700'}`}>
-                    {multiPeriodAnalysis.trends.expenseTrend === 'up' ? '↗ 上升' : multiPeriodAnalysis.trends.expenseTrend === 'down' ? '↘ 下降' : '→ 稳定'}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card className={multiPeriodAnalysis.trends.profitTrend === 'up' ? 'bg-green-50 border-green-200' : multiPeriodAnalysis.trends.profitTrend === 'down' ? 'bg-red-50 border-red-200' : 'bg-gray-50'}>
-                <CardContent className="p-4">
-                  <p className="text-sm text-gray-600">利润趋势</p>
-                  <p className={`text-2xl font-bold ${multiPeriodAnalysis.trends.profitTrend === 'up' ? 'text-green-700' : multiPeriodAnalysis.trends.profitTrend === 'down' ? 'text-red-700' : 'text-gray-700'}`}>
-                    {multiPeriodAnalysis.trends.profitTrend === 'up' ? '↗ 上升' : multiPeriodAnalysis.trends.profitTrend === 'down' ? '↘ 下降' : '→ 稳定'}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* 详细数据表格 */}
-            <Card>
-              <CardHeader>
-                <CardTitle>期间对比详情</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">期间</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">收入</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">收入环比</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">成本率</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">费用率</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">毛利率</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">净利率</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {multiPeriodAnalysis.periods.map((period, idx) => (
-                      <tr key={period} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-medium">{period}</td>
-                        <td className="px-4 py-3 text-right">{formatAmount(multiPeriodAnalysis.revenue[idx]?.totalRevenue || 0)}</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={multiPeriodAnalysis.revenue[idx]?.growthRate > 0 ? 'text-green-600' : multiPeriodAnalysis.revenue[idx]?.growthRate < 0 ? 'text-red-600' : 'text-gray-500'}>
-                            {multiPeriodAnalysis.revenue[idx]?.growthRate > 0 ? '+' : ''}{multiPeriodAnalysis.revenue[idx]?.growthRate?.toFixed(1)}%
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">{multiPeriodAnalysis.cost[idx]?.costRatio?.toFixed(1)}%</td>
-                        <td className="px-4 py-3 text-right">{multiPeriodAnalysis.expense[idx]?.expenseRatio?.toFixed(1)}%</td>
-                        <td className="px-4 py-3 text-right">{multiPeriodAnalysis.profit[idx]?.grossMargin?.toFixed(1)}%</td>
-                        <td className="px-4 py-3 text-right">{multiPeriodAnalysis.profit[idx]?.netMargin?.toFixed(1)}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-
-            {/* 分析建议 */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-blue-600" />
-                  分析建议
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {multiPeriodAnalysis.suggestions.map((suggestion, idx) => (
-                    <div key={idx} className="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
-                      {suggestion}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+          <div className="h-[calc(100vh-64px)] -m-6">
+            <MultiPeriodComparisonNew 
+              periods={currentCompany.periods}
+              onClose={() => setViewMode('periods')}
+            />
           </div>
         )}
       </main>
