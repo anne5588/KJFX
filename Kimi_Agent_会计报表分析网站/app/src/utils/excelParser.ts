@@ -342,38 +342,38 @@ export const parseExcelFile = (file: File): Promise<FinancialData> => {
           switch (sheetType) {
             case 'balance':
               parseBalanceSheetSmart(jsonData, allData);
-              // 保存原始数据
+              // 保存原始数据 - 保留所有行，不做表头分离
               allData.rawTables.balanceSheet = {
                 sheetName,
-                headers: jsonData.length > 0 ? jsonData[0].map(String) : [],
-                rows: jsonData.slice(1)
+                headers: [],
+                rows: jsonData
               };
               break;
             case 'income':
               parseIncomeStatementSmart(jsonData, allData);
-              // 保存原始数据
+              // 保存原始数据 - 保留所有行，不做表头分离
               allData.rawTables.incomeStatement = {
                 sheetName,
-                headers: jsonData.length > 0 ? jsonData[0].map(String) : [],
-                rows: jsonData.slice(1)
+                headers: [],
+                rows: jsonData
               };
               break;
             case 'cashflow':
               parseCashflowStatementSmart(jsonData, allData);
-              // 保存原始数据
+              // 保存原始数据 - 保留所有行，不做表头分离
               allData.rawTables.cashflowStatement = {
                 sheetName,
-                headers: jsonData.length > 0 ? jsonData[0].map(String) : [],
-                rows: jsonData.slice(1)
+                headers: [],
+                rows: jsonData
               };
               break;
             case 'subject':
               parseSubjectBalance(jsonData, allData);
-              // 保存原始数据
+              // 保存原始数据 - 保留所有行，不做表头分离
               allData.rawTables.subjectBalance = {
                 sheetName,
-                headers: jsonData.length > 0 ? jsonData[0].map(String) : [],
-                rows: jsonData.slice(1)
+                headers: [],
+                rows: jsonData
               };
               break;
             case 'ledger':
@@ -436,15 +436,26 @@ const detectSheetType = (data: any[][], sheetName: string): string => {
   console.log(`    [detectSheetType] 检查: "${sheetName}" -> lower: "${nameLower}"`);
   
   // 优先检查特定类型（放在前面优先匹配）
-  if (nameLower.includes('资产负债')) { console.log('      -> match: balance'); return 'balance'; }
-  if (nameLower.includes('利润') || nameLower.includes('损益')) { console.log('      -> match: income'); return 'income'; }
-  if (nameLower.includes('现金') || nameLower.includes('cash')) { console.log('      -> match: cashflow'); return 'cashflow'; }
+  // 更精确的匹配：排除"附表"、"明细"等后缀
+  if (nameLower.includes('资产负债') && !nameLower.includes('附表')) { console.log('      -> match: balance'); return 'balance'; }
+  // 利润表：包含"利润"但不包含"附表"、"明细"
+  if ((nameLower === '利润表' || nameLower.includes('利润表') || nameLower.includes('损益')) && 
+      !nameLower.includes('附表') && !nameLower.includes('明细')) { 
+    console.log('      -> match: income'); return 'income'; 
+  }
+  // 现金流量表：排除附表
+  if ((nameLower.includes('现金') || nameLower.includes('cash')) && !nameLower.includes('附表')) { 
+    console.log('      -> match: cashflow'); return 'cashflow'; 
+  }
   // 明细分类账要在科目余额表之前检查
   if (nameLower.includes('明细')) { console.log('      -> match: ledger (by name)'); return 'ledger'; }
   if (nameLower.includes('ledger')) { console.log('      -> match: ledger (by ledger)'); return 'ledger'; }
   if (nameLower.includes('账龄') || nameLower.includes('aging')) { console.log('      -> match: aging'); return 'aging'; }
   if (nameLower.includes('概要') || nameLower.includes('summary')) { console.log('      -> match: summary'); return 'summary'; }
-  if (nameLower.includes('科目') || nameLower.includes('余额')) { console.log('      -> match: subject'); return 'subject'; }
+  // 科目余额表：排除明细账
+  if ((nameLower.includes('科目') || nameLower.includes('余额')) && !nameLower.includes('明细')) { 
+    console.log('      -> match: subject'); return 'subject'; 
+  }
   
   const content = data.slice(0, 15).map(row => row.join(' ')).join(' ');
   

@@ -53,19 +53,48 @@ const EmptyDataTip: React.FC<{ message: string }> = ({ message }) => (
   </div>
 );
 
+// 检测是否为表头行
+const findHeaderRow = (rows: any[][]): { headerIndex: number; headers: string[] } => {
+  const headerKeywords = ['项目', '科目', '行次', '序号', '代码', '名称', '金额', '本期', '本年', '期末', '期初', '借方', '贷方'];
+  
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const row = rows[i];
+    if (!row || row.length === 0) continue;
+    
+    const rowText = row.map(String).join(' ');
+    const keywordCount = headerKeywords.filter(kw => rowText.includes(kw)).length;
+    
+    // 如果包含至少2个关键词，认为是表头
+    if (keywordCount >= 2) {
+      return { headerIndex: i, headers: row.map(String) };
+    }
+  }
+  
+  return { headerIndex: -1, headers: [] };
+};
+
 // 原始表格组件
-const RawTable: React.FC<{ data: any[][]; headers?: string[] }> = ({ data, headers }) => {
+const RawTable: React.FC<{ data: any[][]; forceHeaders?: string[] }> = ({ data, forceHeaders }) => {
   if (!data || data.length === 0) return <EmptyDataTip message="无数据" />;
   
-  const allRows = headers ? [headers, ...data] : data;
-  const maxCols = Math.max(...allRows.map(row => row?.length || 0));
+  // 自动识别表头
+  const { headerIndex, headers } = forceHeaders && forceHeaders.length > 0 
+    ? { headerIndex: -1, headers: forceHeaders }
+    : findHeaderRow(data);
+  
+  // 数据行（排除表头之前的行）
+  const dataRows = headerIndex >= 0 ? data.slice(headerIndex + 1) : data;
+  const displayRows = headerIndex >= 0 ? data.slice(0, headerIndex + 1).concat(dataRows) : data;
+  
+  const maxCols = Math.max(...displayRows.map(row => row?.length || 0), headers.length);
+  const effectiveHeaders = headers.length > 0 ? headers : Array.from({ length: maxCols }, (_, i) => `列${i + 1}`);
   
   // 判断某列是否为金额列（数字比例高）
   const isAmountCol = (colIndex: number): boolean => {
     let numericCount = 0;
     let totalCount = 0;
-    for (let i = 1; i < Math.min(allRows.length, 20); i++) {
-      const val = allRows[i]?.[colIndex];
+    for (let i = headerIndex + 1; i < Math.min(data.length, headerIndex + 20); i++) {
+      const val = data[i]?.[colIndex];
       if (val !== undefined && val !== null && val !== '') {
         totalCount++;
         if (isNumeric(val)) numericCount++;
@@ -79,18 +108,18 @@ const RawTable: React.FC<{ data: any[][]; headers?: string[] }> = ({ data, heade
       <Table>
         <TableHeader>
           <TableRow className="bg-gray-100">
-            {Array.from({ length: maxCols }).map((_, idx) => (
+            {effectiveHeaders.map((header, idx) => (
               <TableHead 
                 key={idx} 
                 className={`text-xs font-bold whitespace-nowrap ${isAmountCol(idx) ? 'text-right' : 'text-left'}`}
               >
-                {headers?.[idx] || `列${idx + 1}`}
+                {header || ''}
               </TableHead>
             ))}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((row, rowIdx) => (
+          {dataRows.map((row, rowIdx) => (
             <TableRow key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
               {Array.from({ length: maxCols }).map((_, colIdx) => {
                 const value = row?.[colIdx];
@@ -208,7 +237,7 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <RawTable data={subjectBalanceRaw.rows} headers={subjectBalanceRaw.headers} />
+                <RawTable data={subjectBalanceRaw.rows} />
               </CardContent>
             </Card>
           )}
@@ -227,7 +256,7 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <RawTable data={balanceSheetRaw.rows} headers={balanceSheetRaw.headers} />
+                <RawTable data={balanceSheetRaw.rows} />
               </CardContent>
             </Card>
           )}
@@ -246,7 +275,7 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <RawTable data={incomeStatementRaw.rows} headers={incomeStatementRaw.headers} />
+                <RawTable data={incomeStatementRaw.rows} />
               </CardContent>
             </Card>
           )}
@@ -265,7 +294,7 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <RawTable data={cashflowStatementRaw.rows} headers={cashflowStatementRaw.headers} />
+                <RawTable data={cashflowStatementRaw.rows} />
               </CardContent>
             </Card>
           )}
