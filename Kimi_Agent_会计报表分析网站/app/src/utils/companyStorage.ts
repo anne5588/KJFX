@@ -6,22 +6,63 @@ import type { FinancialData } from '@/utils/excelParser';
 
 const STORAGE_KEY = 'accounting-analysis-companies';
 
+// 将保存的数据转换为 Map（支持数组和对象两种格式）
+const restoreMap = (value: any): Map<string, number> => {
+  if (!value) return new Map();
+  // 如果已经是 Map，直接返回
+  if (value instanceof Map) return value;
+  // 如果是数组格式 [[k,v], [k2,v2]]
+  if (Array.isArray(value)) return new Map(value);
+  // 如果是普通对象格式 {k: v, k2: v2}
+  if (typeof value === 'object') {
+    return new Map(Object.entries(value).map(([k, v]) => [k, Number(v) || 0]));
+  }
+  return new Map();
+};
+
+// 将 Map 转换为数组以便序列化
+const serializeMap = (map: Map<string, number> | undefined): [string, number][] => {
+  if (!map) return [];
+  if (map instanceof Map) return Array.from(map.entries());
+  if (Array.isArray(map)) return map;
+  if (typeof map === 'object') return Object.entries(map).map(([k, v]) => [k, Number(v) || 0]);
+  return [];
+};
+
+// 将 FinancialData 中的 Map 转换为可序列化的格式
+const serializeFinancialData = (data: any): any => {
+  if (!data) return data;
+  return {
+    ...data,
+    assets: serializeMap(data.assets),
+    liabilities: serializeMap(data.liabilities),
+    equity: serializeMap(data.equity),
+    income: serializeMap(data.income),
+    expenses: serializeMap(data.expenses),
+    beginningAssets: serializeMap(data.beginningAssets),
+    beginningLiabilities: serializeMap(data.beginningLiabilities),
+    beginningEquity: serializeMap(data.beginningEquity),
+    beginningIncome: serializeMap(data.beginningIncome),
+    beginningExpenses: serializeMap(data.beginningExpenses),
+  };
+};
+
 // 恢复 FinancialData 中的 Map
 const restoreFinancialData = (data: any): FinancialData => {
   if (!data) return data;
   
   return {
     ...data,
-    assets: new Map(data.assets || []),
-    liabilities: new Map(data.liabilities || []),
-    equity: new Map(data.equity || []),
-    income: new Map(data.income || []),
-    expenses: new Map(data.expenses || []),
-    beginningAssets: new Map(data.beginningAssets || []),
-    beginningLiabilities: new Map(data.beginningLiabilities || []),
-    beginningEquity: new Map(data.beginningEquity || []),
-    beginningIncome: new Map(data.beginningIncome || []),
-    beginningExpenses: new Map(data.beginningExpenses || []),
+    assets: restoreMap(data.assets),
+    liabilities: restoreMap(data.liabilities),
+    equity: restoreMap(data.equity),
+    income: restoreMap(data.income),
+    expenses: restoreMap(data.expenses),
+    beginningAssets: restoreMap(data.beginningAssets),
+    beginningLiabilities: restoreMap(data.beginningLiabilities),
+    beginningEquity: restoreMap(data.beginningEquity),
+    beginningIncome: restoreMap(data.beginningIncome),
+    beginningExpenses: restoreMap(data.beginningExpenses),
   };
 };
 
@@ -173,7 +214,7 @@ export const addPeriodData = (
       periodType,
       periodDate: generatePeriodDate(period, periodType),
       uploadedAt: new Date().toISOString(),
-      financialData,
+      financialData: serializeFinancialData(financialData),
       metrics,
       dupontAnalysis,
     };
