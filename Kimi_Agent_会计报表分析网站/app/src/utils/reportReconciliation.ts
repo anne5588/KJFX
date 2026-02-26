@@ -126,11 +126,47 @@ const checkRetainedEarnings = (data: FinancialData): ReconciliationItem => {
   // 净利润
   const netProfit = data.netProfit || (data.totalIncome - data.totalExpenses);
   
-  // 提取盈余公积（简化估算为净利润的10%）
-  const surplusReserve = Math.max(0, netProfit * 0.1);
+  // 计算盈余公积提取（年底才提取，且需先弥补以前亏损）
+  let surplusReserve = 0;
+  // 通过数据特征推断是否为年度数据
+  const hasSignificantProfit = Math.abs(netProfit) > 500000;
+  const isLikelyYearEnd = hasSignificantProfit;
+  
+  if (isLikelyYearEnd && netProfit > 0) {
+    // 先弥补以前年度亏损（如果期初未分配利润为负）
+    const remainingProfit = openingRetained < 0 
+      ? netProfit + openingRetained  // 用本年利润弥补以前亏损
+      : netProfit;
+    
+    // 弥补后有余额才提取10%
+    if (remainingProfit > 0) {
+      surplusReserve = remainingProfit * 0.1;
+    }
+  }
+  
+  // 查找实际提取的盈余公积（如果有数据）
+  let actualSurplusReserve = 0;
+  data.equity.forEach((value, name) => {
+    if (name.includes('盈余公积')) {
+      const openingReserve = data.beginningEquity?.get(name) || 0;
+      actualSurplusReserve += value - openingReserve;
+    }
+  });
   
   const expectedClosing = openingRetained + netProfit - surplusReserve;
   const difference = closingRetained - expectedClosing;
+  
+  // 判断合理性
+  let isReasonable = Math.abs(difference) <= 1000;
+  let message = '';
+  
+  if (isReasonable) {
+    message = '未分配利润勾稽一致';
+  } else if (openingRetained < 0) {
+    message = `期初未分配利润为负(${formatAmount(openingRetained)})，本年利润${formatAmount(netProfit)}需先弥补亏损。差异可能原因：1）使用盈余公积弥补亏损；2）以前年度损益调整；3）直接计入权益的利得损失`;
+  } else {
+    message = `未分配利润差异 ${formatAmount(difference)}，可能原因：1）以前年度损益调整；2）直接计入权益的利得损失；3）会计政策变更；4）分配股利`;
+  }
   
   return {
     id: 'retained-earnings',
@@ -141,10 +177,8 @@ const checkRetainedEarnings = (data: FinancialData): ReconciliationItem => {
     actualValue: closingRetained,
     difference: Math.abs(difference),
     tolerance: 1000,
-    status: Math.abs(difference) <= 1000 ? 'passed' : 'warning',
-    message: Math.abs(difference) <= 1000
-      ? '未分配利润勾稽一致'
-      : `未分配利润差异 ${formatAmount(difference)}，可能原因：1）以前年度损益调整；2）直接计入权益的利得损失；3）会计政策变更`,
+    status: isReasonable ? 'passed' : 'warning',
+    message,
   };
 };
 
@@ -251,24 +285,84 @@ const checkSurplusReserve = (data: FinancialData): ReconciliationItem => {
     }
   });
   
+  // 查找期初未分配利润（用于判断是否需要弥补亏损）
+  let openingRetained = 0;
+  data.beginningEquity?.forEach((value, name) => {
+    if (name.includes('未分配利润')) {
+      openingRetained = value;
+    }
+  });
+  
   const netProfit = data.netProfit || 0;
-  const expectedIncrease = Math.max(0, netProfit * 0.1); // 法定盈余公积10%
+  const actualIncrease = closingReserve - openingReserve;
+  
+  // 判断是否为年度数据（通过数据特征推断）
+  // 特征1：净利润金额较大（通常年度数据比月度大12倍左右）
+  // 特征2：有盈余公积变动（月度通常不会变动）
+  const hasSignificantProfit = Math.abs(netProfit) > 500000; // 假设年度净利润通常大于50万
+  const hasReserveChange = Math.abs(actualIncrease) > 100;
+  
+  // 如果没有盈余公积变动且利润较小，可能是月度数据，不强制检查
+  if (!hasReserveChange && !hasSignificantProfit) {
+    return {
+      id: 'surplus-reserve',
+      name: '盈余公积',
+      description: '月度数据通常不在本期提取盈余公积',
+      formula: '年底12月才提取盈余公积',
+      expectedValue: openingReserve,
+      actualValue: closingReserve,
+      difference: 0,
+      tolerance: 100,
+      status: 'passed',
+      message: `盈余公积无变动${openingReserve > 0 ? `（余额${formatAmount(openingReserve)}）` : ''}。月度数据通常在年度终了时统一提取盈余公积`,
+    };
+  }
+  
+  // 年底提取逻辑：
+  // 1. 本年利润必须为正
+  // 2. 先弥补以前年度亏损（如果期初未分配利润为负）
+  // 3. 弥补后有余额才提取10%
+  
+  let expectedIncrease = 0;
+  let calculationDetail = '';
+  
+  if (netProfit <= 0) {
+    // 本年亏损，不应提取
+    expectedIncrease = 0;
+    calculationDetail = `本年亏损${formatAmount(Math.abs(netProfit))}，无需提取盈余公积`;
+  } else if (openingRetained < 0) {
+    // 有以前年度亏损，先弥补
+    const remainingProfit = netProfit + openingRetained; // openingRetained是负数
+    if (remainingProfit > 0) {
+      expectedIncrease = remainingProfit * 0.1;
+      calculationDetail = `期初未分配利润为负(${formatAmount(openingRetained)})，先用本年利润${formatAmount(netProfit)}弥补，剩余${formatAmount(remainingProfit)}按10%提取`;
+    } else {
+      expectedIncrease = 0;
+      calculationDetail = `本年利润${formatAmount(netProfit)}不足以弥补以前亏损${formatAmount(Math.abs(openingRetained))}，无需提取`;
+    }
+  } else {
+    // 正常情况，直接提取10%
+    expectedIncrease = netProfit * 0.1;
+    calculationDetail = `本年利润${formatAmount(netProfit)}，按10%提取法定盈余公积`;
+  }
+  
   const expectedClosing = openingReserve + expectedIncrease;
   const difference = closingReserve - expectedClosing;
+  const isReasonable = Math.abs(difference) <= 1000;
   
   return {
     id: 'surplus-reserve',
     name: '盈余公积提取',
-    description: '验证盈余公积按净利润10%提取',
-    formula: '盈余公积 = 期初 + 净利润 × 10%',
+    description: '验证年底盈余公积提取是否符合规定',
+    formula: '年底：盈余公积 = 期初 + (净利润 - 弥补亏损) × 10%',
     expectedValue: expectedClosing,
     actualValue: closingReserve,
     difference: Math.abs(difference),
     tolerance: 1000,
-    status: Math.abs(difference) <= 1000 ? 'passed' : 'warning',
-    message: Math.abs(difference) <= 1000
-      ? `盈余公积提取正常，本年提取约 ${formatAmount(closingReserve - openingReserve)}`
-      : `盈余公积差异 ${formatAmount(difference)}，可能原因：1）任意盈余公积提取比例不同；2）使用盈余公积转增资本；3）弥补亏损`,
+    status: isReasonable ? 'passed' : 'warning',
+    message: isReasonable
+      ? `盈余公积提取正常。${calculationDetail}，实际提取${formatAmount(actualIncrease)}`
+      : `盈余公积差异 ${formatAmount(difference)}。${calculationDetail}，但实际变动${formatAmount(actualIncrease)}。可能原因：1）提取任意盈余公积；2）使用盈余公积转增资本；3）使用盈余公积弥补亏损`,
   };
 };
 
