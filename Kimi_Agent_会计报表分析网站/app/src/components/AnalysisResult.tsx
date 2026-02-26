@@ -25,6 +25,7 @@ import { performComprehensiveAnalysis } from '@/utils/comprehensiveAnalysis';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PieChartComponent, BarChartComponent, RadarChartComponent, FinancialStructureChart, IncomeExpenseChart } from './Charts';
+import RawDataViewer from './RawDataViewer';
 
 interface AnalysisResultProps {
   result: AnalysisResultType;
@@ -88,7 +89,8 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
 
       {/* 详细分析标签页 */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-10">
+        <TabsList className="grid w-full grid-cols-11">
+          <TabsTrigger value="rawdata">报表查看</TabsTrigger>
           <TabsTrigger value="metrics">财务指标</TabsTrigger>
           <TabsTrigger value="subject">科目分析</TabsTrigger>
           <TabsTrigger value="structure">财务结构</TabsTrigger>
@@ -103,6 +105,11 @@ const AnalysisResultComponent: React.FC<AnalysisResultProps> = ({
             <TabsTrigger value="ledger">明细账</TabsTrigger>
           )}
         </TabsList>
+
+        {/* 报表查看 - 原始数据 */}
+        <TabsContent value="rawdata" className="space-y-6">
+          <RawDataViewer financialData={financialData} />
+        </TabsContent>
 
         {/* 财务指标 - 五大能力分析 */}
         <TabsContent value="metrics" className="space-y-6">
