@@ -86,8 +86,13 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
     expenses: deduplicate(expenses.filter(([_, v]) => v !== 0)),
   };
   
-  // 计算收入合计（所有收入科目相加）
+  // 计算各类合计
+  const totalAssetsCalculated = balanceSheetData.assets.reduce((sum, [_, v]) => sum + v, 0);
+  const totalLiabilitiesCalculated = balanceSheetData.liabilities.reduce((sum, [_, v]) => sum + v, 0);
+  const totalEquityCalculated = balanceSheetData.equity.reduce((sum, [_, v]) => sum + v, 0);
   const totalIncomeCalculated = incomeStatementData.income.reduce((sum, [_, v]) => sum + v, 0);
+  const totalExpensesCalculated = incomeStatementData.expenses.reduce((sum, [_, v]) => sum + v, 0);
+  const netProfitCalculated = totalIncomeCalculated - totalExpensesCalculated;
   
   // 现金流量数据
   const cashflowData = {
@@ -192,6 +197,10 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                             <TableCell className="text-right font-mono text-sm py-1">{formatAmount(value)}</TableCell>
                           </TableRow>
                         ))}
+                        <TableRow className="bg-blue-50 font-bold">
+                          <TableCell className="py-2">资产总计</TableCell>
+                          <TableCell className="text-right font-mono py-2">{formatAmount(totalAssetsCalculated)}</TableCell>
+                        </TableRow>
                       </TableBody>
                     </Table>
                   )}
@@ -226,6 +235,10 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                               <TableCell className="text-right font-mono text-sm py-1">{formatAmount(value)}</TableCell>
                             </TableRow>
                           ))}
+                          <TableRow className="bg-rose-50 font-bold">
+                            <TableCell className="py-2">负债合计</TableCell>
+                            <TableCell className="text-right font-mono py-2">{formatAmount(totalLiabilitiesCalculated)}</TableCell>
+                          </TableRow>
                         </TableBody>
                       </Table>
                     )}
@@ -258,6 +271,10 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                               <TableCell className="text-right font-mono text-sm py-1">{formatAmount(value)}</TableCell>
                             </TableRow>
                           ))}
+                          <TableRow className="bg-emerald-50 font-bold">
+                            <TableCell className="py-2">所有者权益合计</TableCell>
+                            <TableCell className="text-right font-mono py-2">{formatAmount(totalEquityCalculated)}</TableCell>
+                          </TableRow>
                         </TableBody>
                       </Table>
                     )}
@@ -338,12 +355,46 @@ const RawDataViewer: React.FC<RawDataViewerProps> = ({ financialData }) => {
                             <TableCell className="text-right font-mono text-sm py-1">{formatAmount(value)}</TableCell>
                           </TableRow>
                         ))}
+                        <TableRow className="bg-rose-50 font-bold">
+                          <TableCell className="py-2">成本费用合计</TableCell>
+                          <TableCell className="text-right font-mono py-2">{formatAmount(totalExpensesCalculated)}</TableCell>
+                        </TableRow>
                       </TableBody>
                     </Table>
                   )}
                 </CardContent>
               </Card>
             </div>
+          )}
+          
+          {/* 利润计算 */}
+          {hasIncomeData && (
+            <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Calculator className="w-4 h-4 text-amber-600" />
+                  利润计算
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center py-1 border-b border-amber-100">
+                    <span className="text-gray-600">收入合计</span>
+                    <span className="font-mono font-medium text-blue-600">{formatAmount(totalIncomeCalculated)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-amber-100">
+                    <span className="text-gray-600">减：成本费用合计</span>
+                    <span className="font-mono font-medium text-rose-600">{formatAmount(totalExpensesCalculated)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 bg-amber-100 px-3 rounded">
+                    <span className="font-bold">净利润</span>
+                    <span className={`font-mono font-bold text-lg ${netProfitCalculated >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {formatAmount(netProfitCalculated)}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
         
