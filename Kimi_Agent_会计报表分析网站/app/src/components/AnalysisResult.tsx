@@ -15,6 +15,11 @@ import { generateSmartReport, type SmartReport } from '@/utils/smartReport';
 import { calculateWallScore } from '@/utils/wallScoring';
 import { detectAnomalies, generateAnomalySummary, type Anomaly } from '@/utils/anomalyDetection';
 
+// 增强版科目分析导入
+import { reconcileReports } from '@/utils/reportReconciliation';
+import { analyzeDetailedSubjects } from '@/utils/detailedSubjectAnalysis';
+import { performComprehensiveAnalysis } from '@/utils/comprehensiveAnalysis';
+
 // import MetricCard from './MetricCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -625,113 +630,402 @@ const FinancialMetricsDashboard: React.FC<FinancialMetricsDashboardProps> = ({
   );
 };
 
-// 科目分析标签页组件
+// 科目分析标签页组件 - 增强版（四大报表核对+深度分析+综合结论）
 interface SubjectAnalysisTabProps {
   financialData: FinancialData;
   onViewLedger: (subjectName: string) => void;
 }
 
-const SubjectAnalysisTab: React.FC<SubjectAnalysisTabProps> = ({ financialData, onViewLedger }) => {
+const SubjectAnalysisTab: React.FC<SubjectAnalysisTabProps> = ({ financialData, onViewLedger: _onViewLedger }) => {
+  // 执行三大分析
+  const reconciliation = React.useMemo(() => reconcileReports(financialData), [financialData]);
+  const detailedAnalysis = React.useMemo(() => analyzeDetailedSubjects(financialData), [financialData]);
+  const comprehensiveAnalysis = React.useMemo(() => performComprehensiveAnalysis(financialData, reconciliation, detailedAnalysis), [financialData, reconciliation, detailedAnalysis]);
+  
+  // 当前展开的子标签
+  const [activeSubTab, setActiveSubTab] = React.useState('reconciliation');
+  
   // 获取有明细账的科目名称列表
   const ledgerSubjectNames = new Set(financialData.ledgers.map(l => l.subjectName));
-  
-  // 合并所有科目数据
-  const allSubjects = [
-    ...Array.from(financialData.assets.entries()).map(([name, value]) => ({ 
-      name, value, type: '资产', hasLedger: ledgerSubjectNames.has(name) 
-    })),
-    ...Array.from(financialData.liabilities.entries()).map(([name, value]) => ({ 
-      name, value, type: '负债', hasLedger: ledgerSubjectNames.has(name) 
-    })),
-    ...Array.from(financialData.income.entries()).map(([name, value]) => ({ 
-      name, value, type: '收入', hasLedger: ledgerSubjectNames.has(name) 
-    })),
-    ...Array.from(financialData.expenses.entries()).map(([name, value]) => ({ 
-      name, value, type: '费用', hasLedger: ledgerSubjectNames.has(name) 
-    })),
-  ].sort((a, b) => b.value - a.value);
 
-  // 按类型分组
-  const assets = allSubjects.filter(s => s.type === '资产').slice(0, 20);
-  const liabilities = allSubjects.filter(s => s.type === '负债').slice(0, 20);
-  const income = allSubjects.filter(s => s.type === '收入').slice(0, 10);
-  const expenses = allSubjects.filter(s => s.type === '费用').slice(0, 10);
+  // 状态颜色
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'passed': return 'bg-green-100 text-green-700 border-green-300';
+      case 'warning': return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+      case 'failed': return 'bg-red-100 text-red-700 border-red-300';
+      default: return 'bg-gray-100 text-gray-700 border-gray-300';
+    }
+  };
 
-  const SubjectList = ({ items, type, color }: { items: typeof allSubjects, type: string, color: string }) => (
-    <Card className="h-full">
-      <CardHeader className="py-3">
-        <CardTitle className="text-base font-medium flex items-center justify-between">
-          <span>{type}科目</span>
-          <span className={`text-xs px-2 py-1 rounded-full bg-${color}-100 text-${color}-700`}>
-            {items.length}个
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="space-y-1 max-h-64 overflow-y-auto">
-          {items.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">无{type}科目</p>
-          ) : (
-            items.map((item, idx) => (
-              <div 
-                key={idx} 
-                className={`flex items-center justify-between py-2 px-2 rounded text-sm ${
-                  item.hasLedger 
-                    ? 'hover:bg-blue-50 cursor-pointer group' 
-                    : 'hover:bg-gray-50'
-                }`}
-                onClick={() => item.hasLedger && onViewLedger(item.name)}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-700 truncate max-w-[120px]">{item.name}</span>
-                  {item.hasLedger && (
-                    <Badge variant="outline" className="text-xs text-blue-600 border-blue-300">
-                      有明细
-                    </Badge>
-                  )}
-                </div>
-                <span className="font-medium text-gray-900">{formatCurrencyUniform(item.value)}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'passed': return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case 'warning': return <AlertTriangle className="w-4 h-4 text-yellow-600" />;
+      case 'failed': return <AlertOctagon className="w-4 h-4 text-red-600" />;
+      default: return <Info className="w-4 h-4 text-gray-600" />;
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'passed': return '通过';
+      case 'warning': return '警告';
+      case 'failed': return '异常';
+      default: return '未知';
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-blue-600" />
-            科目余额表分析
+      {/* 综合评估卡片 */}
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex items-center gap-2 text-blue-800">
+            <Target className="w-5 h-5" />
+            智能综合评估
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-gray-600">资产总计: {formatCurrencyUniform(financialData.totalAssets)}</p>
-          <p className="text-gray-600">负债总计: {formatCurrencyUniform(financialData.totalLiabilities)}</p>
-          <p className="text-gray-600">权益总计: {formatCurrencyUniform(financialData.totalEquity)}</p>
-          <p className="text-gray-600">营业收入: {formatCurrencyUniform(financialData.totalIncome)}</p>
-          <p className="text-gray-600">净利润: {formatCurrencyUniform(financialData.netProfit)}</p>
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-700">
-              <span className="font-medium">提示：</span>
-              带有 
-              <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 mx-1">有明细</Badge>
-              标签的科目可点击查看明细账详情
-            </p>
+          <div className="flex items-center gap-6 mb-4">
+            <div className="text-center">
+              <div className={`text-4xl font-bold ${comprehensiveAnalysis.healthScore.overall >= 70 ? 'text-green-600' : comprehensiveAnalysis.healthScore.overall >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                {comprehensiveAnalysis.healthScore.overall}
+              </div>
+              <div className="text-xs text-gray-500">健康度评分</div>
+            </div>
+            <div className="flex-1">
+              <p className="text-gray-700 font-medium">{comprehensiveAnalysis.overallAssessment.summary}</p>
+              <div className="flex items-center gap-4 mt-2">
+                <span className={`px-2 py-1 rounded text-xs ${comprehensiveAnalysis.overallAssessment.riskLevel === 'high' ? 'bg-red-100 text-red-700' : comprehensiveAnalysis.overallAssessment.riskLevel === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+                  风险等级: {comprehensiveAnalysis.overallAssessment.riskLevel === 'high' ? '高' : comprehensiveAnalysis.overallAssessment.riskLevel === 'medium' ? '中' : '低'}
+                </span>
+                <span className="text-xs text-gray-500">
+                  报表核对: {reconciliation.stats.passed}/{reconciliation.stats.total} 项通过
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          {/* 五大能力评分 */}
+          <div className="grid grid-cols-5 gap-2 mt-4">
+            {[
+              { name: '盈利', score: comprehensiveAnalysis.healthScore.profitability },
+              { name: '流动', score: comprehensiveAnalysis.healthScore.liquidity },
+              { name: '偿债', score: comprehensiveAnalysis.healthScore.solvency },
+              { name: '营运', score: comprehensiveAnalysis.healthScore.operation },
+              { name: '成长', score: comprehensiveAnalysis.healthScore.growth },
+            ].map((item) => (
+              <div key={item.name} className="text-center p-2 bg-white rounded-lg">
+                <div className={`text-lg font-bold ${item.score >= 70 ? 'text-green-600' : item.score >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                  {item.score}
+                </div>
+                <div className="text-xs text-gray-500">{item.name}</div>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <SubjectList items={assets} type="资产" color="blue" />
-        <SubjectList items={liabilities} type="负债" color="red" />
+      {/* 子标签页导航 */}
+      <div className="flex gap-2 border-b">
+        {[
+          { id: 'reconciliation', label: '报表核对', icon: FileSearch },
+          { id: 'fundflow', label: '资金流向', icon: ArrowRightLeft },
+          { id: 'receivables', label: '往来分析', icon: Users },
+          { id: 'changes', label: '科目变动', icon: TrendingUp },
+          { id: 'concerns', label: '重点关注', icon: AlertTriangle },
+        ].map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveSubTab(id)}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeSubTab === id 
+                ? 'border-blue-500 text-blue-600' 
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <SubjectList items={income} type="收入" color="green" />
-        <SubjectList items={expenses} type="费用" color="orange" />
+
+      {/* 子标签页内容 */}
+      <div className="space-y-4">
+        {/* 1. 报表核对 */}
+        {activeSubTab === 'reconciliation' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <FileSearch className="w-5 h-5 text-blue-600" />
+                四大报表勾稽关系核对
+              </h3>
+              <div className="flex items-center gap-4 text-sm">
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-500"></span>通过 {reconciliation.stats.passed}</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-yellow-500"></span>警告 {reconciliation.stats.warning}</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500"></span>异常 {reconciliation.stats.failed}</span>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              {reconciliation.items.map((item) => (
+                <Card key={item.id} className={`border-l-4 ${item.status === 'passed' ? 'border-l-green-500' : item.status === 'warning' ? 'border-l-yellow-500' : 'border-l-red-500'}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          {getStatusIcon(item.status)}
+                          <span className="font-medium">{item.name}</span>
+                          <Badge className={getStatusColor(item.status)}>
+                            {getStatusText(item.status)}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-2">{item.description}</p>
+                        <p className="text-sm text-gray-600">{item.message}</p>
+                        <div className="mt-2 text-xs text-gray-400">
+                          公式: {item.formula} | 期望值: {formatAmount(item.expectedValue)} | 实际值: {formatAmount(item.actualValue)}
+                          {item.difference > 0 && ` | 差异: ${formatAmount(item.difference)}`}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 2. 资金流向 */}
+        {activeSubTab === 'fundflow' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <ArrowRightLeft className="w-5 h-5 text-blue-600" />
+              资金流向分析
+            </h3>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">现金变动分析</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="text-center p-3 bg-gray-50 rounded">
+                    <div className="text-sm text-gray-500">期初现金</div>
+                    <div className="text-lg font-semibold">{formatAmount(detailedAnalysis.cashFlowAnalysis.openingCash)}</div>
+                  </div>
+                  <div className="text-center p-3 bg-gray-50 rounded">
+                    <div className="text-sm text-gray-500">期末现金</div>
+                    <div className="text-lg font-semibold">{formatAmount(detailedAnalysis.cashFlowAnalysis.closingCash)}</div>
+                  </div>
+                  <div className={`text-center p-3 rounded ${detailedAnalysis.cashFlowAnalysis.netChange >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                    <div className="text-sm text-gray-500">净变动</div>
+                    <div className={`text-lg font-semibold ${detailedAnalysis.cashFlowAnalysis.netChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {detailedAnalysis.cashFlowAnalysis.netChange >= 0 ? '+' : ''}{formatAmount(detailedAnalysis.cashFlowAnalysis.netChange)}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-600 bg-blue-50 p-3 rounded">
+                  {detailedAnalysis.cashFlowAnalysis.assessment}
+                </p>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base text-red-600">资金去向</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {detailedAnalysis.cashFlowAnalysis.outflows.toReceivables > 0 && (
+                      <div className="flex justify-between">
+                        <span>形成应收账款</span>
+                        <span className="font-medium">{formatAmount(detailedAnalysis.cashFlowAnalysis.outflows.toReceivables)}</span>
+                      </div>
+                    )}
+                    {detailedAnalysis.cashFlowAnalysis.outflows.toInventory > 0 && (
+                      <div className="flex justify-between">
+                        <span>存货增加</span>
+                        <span className="font-medium">{formatAmount(detailedAnalysis.cashFlowAnalysis.outflows.toInventory)}</span>
+                      </div>
+                    )}
+                    {detailedAnalysis.cashFlowAnalysis.outflows.toFixedAssets > 0 && (
+                      <div className="flex justify-between">
+                        <span>固定资产投资</span>
+                        <span className="font-medium">{formatAmount(detailedAnalysis.cashFlowAnalysis.outflows.toFixedAssets)}</span>
+                      </div>
+                    )}
+                    {detailedAnalysis.cashFlowAnalysis.outflows.toExpenses > 0 && (
+                      <div className="flex justify-between">
+                        <span>费用支出</span>
+                        <span className="font-medium">{formatAmount(detailedAnalysis.cashFlowAnalysis.outflows.toExpenses)}</span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base text-green-600">资金来源</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span>销售收入回款</span>
+                      <span className="font-medium">{formatAmount(detailedAnalysis.cashFlowAnalysis.inflows.fromRevenue)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>应付账款增加</span>
+                      <span className="font-medium">{formatAmount(detailedAnalysis.cashFlowAnalysis.inflows.fromPayables)}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* 3. 往来分析 */}
+        {activeSubTab === 'receivables' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Users className="w-5 h-5 text-blue-600" />
+              大额往来分析
+            </h3>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">应收账款集中度分析</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-600 mb-3">{detailedAnalysis.majorReceivablesPayables.majorReceivables.concentrationRisk}</p>
+                <div className="space-y-2">
+                  {detailedAnalysis.majorReceivablesPayables.majorReceivables.items.slice(0, 5).map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between py-2 border-b last:border-0">
+                      <div>
+                        <span className="font-medium">{item.counterparty}</span>
+                        {item.notes && <span className="text-xs text-red-500 ml-2">{item.notes}</span>}
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium">{formatAmount(item.amount)}</div>
+                        <div className="text-xs text-gray-500">{item.percentage.toFixed(1)}%</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">其他应收款风险（重点关注）</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-600 mb-3">{detailedAnalysis.majorReceivablesPayables.otherReceivables.riskAssessment}</p>
+                {detailedAnalysis.majorReceivablesPayables.otherReceivables.items.length > 0 ? (
+                  <div className="space-y-2">
+                    {detailedAnalysis.majorReceivablesPayables.otherReceivables.items.slice(0, 5).map((item, idx) => (
+                      <div key={idx} className={`p-3 rounded ${item.riskLevel === 'high' ? 'bg-red-50 border border-red-200' : item.riskLevel === 'medium' ? 'bg-yellow-50 border border-yellow-200' : 'bg-gray-50'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{item.counterparty}</span>
+                          <span className="font-medium">{formatAmount(item.amount)}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{item.suggestion}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">无大额其他应收款</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* 4. 科目变动 */}
+        {activeSubTab === 'changes' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-blue-600" />
+              重点科目变动分析
+            </h3>
+            
+            <div className="grid grid-cols-1 gap-3">
+              {detailedAnalysis.keySubjectChanges.slice(0, 8).map((change, idx) => (
+                <Card key={idx} className={`border-l-4 ${change.direction === 'increase' ? 'border-l-green-500' : 'border-l-red-500'}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="font-medium">{change.subjectName}</span>
+                        <span className={`text-xs px-2 py-1 rounded ${change.direction === 'increase' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {change.direction === 'increase' ? '增加' : '减少'} {Math.abs(change.changeRate).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium">{formatAmount(change.changeAmount)}</div>
+                        <div className="text-xs text-gray-500">{formatAmount(change.openingBalance)} → {formatAmount(change.closingBalance)}</div>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-sm text-gray-600">
+                      <span className="text-gray-400">原因:</span> {change.reason} | <span className="text-gray-400">影响:</span> {change.impact}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 5. 重点关注 */}
+        {activeSubTab === 'concerns' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              重点关注事项
+            </h3>
+            
+            {comprehensiveAnalysis.keyConcerns.slice(0, 8).map((concern, idx) => (
+              <Card key={idx} className={`border-l-4 ${concern.priority >= 9 ? 'border-l-red-500' : concern.priority >= 7 ? 'border-l-yellow-500' : 'border-l-blue-500'}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium">{concern.title}</span>
+                        <Badge className={concern.priority >= 9 ? 'bg-red-100 text-red-700' : concern.priority >= 7 ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}>
+                          优先级 {concern.priority}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">{concern.description}</p>
+                      <p className="text-sm text-red-600 mb-2">影响: {concern.impact}</p>
+                      <p className="text-sm text-blue-600">建议: {concern.suggestion}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {comprehensiveAnalysis.keyConcerns.length === 0 && (
+              <Card className="bg-green-50 border-green-200">
+                <CardContent className="p-6 text-center">
+                  <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
+                  <p className="text-green-700 font-medium">未发现重大关注事项</p>
+                  <p className="text-sm text-green-600">财务状况良好，继续保持</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 底部提示 */}
+      <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+        <p className="text-sm text-blue-700">
+          <span className="font-medium">💡 分析说明：</span>
+          科目分析已整合四大报表勾稽核对、资金流向追踪、往来款项分析等功能。
+          {ledgerSubjectNames.size > 0 && ` 系统检测到 ${ledgerSubjectNames.size} 个科目有明细账数据，可在下方查看。`}
+        </p>
       </div>
     </div>
   );
@@ -2282,6 +2576,16 @@ const MultiPeriodAnalysisTab: React.FC<{
       </Card>
     </div>
   );
+};
+
+// 金额格式化辅助函数
+const formatAmount = (value: number): string => {
+  if (Math.abs(value) >= 100000000) {
+    return (value / 100000000).toFixed(2) + '亿';
+  } else if (Math.abs(value) >= 10000) {
+    return (value / 10000).toFixed(2) + '万';
+  }
+  return value.toFixed(2);
 };
 
 export default AnalysisResultComponent;
