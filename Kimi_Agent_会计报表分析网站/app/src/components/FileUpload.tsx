@@ -1,16 +1,27 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Upload, FileSpreadsheet, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, FileSpreadsheet, X, CheckCircle, AlertCircle, File } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface FileUploadProps {
   onFileSelect: (file: File) => void;
+  onFilesSelect?: (files: File[]) => void;
   isProcessing: boolean;
+  multiple?: boolean;
+  currentIndex?: number;
+  totalCount?: number;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ 
+  onFileSelect, 
+  onFilesSelect,
+  isProcessing,
+  multiple = false,
+  currentIndex = 0,
+  totalCount = 0
+}) => {
   const [isDragActive, setIsDragActive] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -19,23 +30,40 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing }) =
     const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
     
     if (!validExtensions.includes(fileExtension)) {
-      setError('请上传Excel文件（.xlsx, .xls）或CSV文件');
+      setError(`文件 "${file.name}" 格式不支持，请上传Excel或CSV文件`);
       return false;
     }
     
     if (file.size > 10 * 1024 * 1024) {
-      setError('文件大小不能超过10MB');
+      setError(`文件 "${file.name}" 超过10MB限制`);
       return false;
     }
     
     return true;
   };
 
-  const handleFile = (file: File) => {
+  const handleFiles = (files: FileList | null) => {
     setError(null);
-    if (validateFile(file)) {
-      setSelectedFile(file);
-      onFileSelect(file);
+    if (!files || files.length === 0) return;
+
+    const validFiles: File[] = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      if (validateFile(files[i])) {
+        validFiles.push(files[i]);
+      }
+    }
+
+    if (validFiles.length === 0) return;
+
+    if (multiple) {
+      setSelectedFiles(validFiles);
+      if (onFilesSelect) {
+        onFilesSelect(validFiles);
+      }
+    } else {
+      setSelectedFiles([validFiles[0]]);
+      onFileSelect(validFiles[0]);
     }
   };
 
@@ -60,31 +88,50 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing }) =
     e.preventDefault();
     e.stopPropagation();
     setIsDragActive(false);
-    
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      handleFile(files[0]);
-    }
-  }, []);
+    handleFiles(e.dataTransfer.files);
+  }, [multiple]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      handleFile(files[0]);
-    }
+    handleFiles(e.target.files);
   };
 
   const handleButtonClick = () => {
     inputRef.current?.click();
   };
 
-  const handleRemoveFile = () => {
-    setSelectedFile(null);
+  const handleRemoveFile = (index?: number) => {
+    if (index !== undefined && multiple) {
+      const newFiles = [...selectedFiles];
+      newFiles.splice(index, 1);
+      setSelectedFiles(newFiles);
+    } else {
+      setSelectedFiles([]);
+    }
     setError(null);
     if (inputRef.current) {
       inputRef.current.value = '';
     }
   };
+
+  // 从文件名提取期间信息
+  const extractPeriodFromFilename = (filename: string): string => {
+    const patterns = [
+      /(\d{4})(\d{2})/,      // 202601
+      /(\d{4})-(\d{2})/,     // 2026-01
+      /(\d{4})年(\d{1,2})月/, // 2026年1月
+    ];
+    
+    for (const pattern of patterns) {
+      const match = filename.match(pattern);
+      if (match) {
+        return `${match[1]}年${match[2]}月`;
+      }
+    }
+    
+    return '';
+  };
+
+  const hasFiles = selectedFiles.length > 0;
 
   return (
     <div className="w-full">
@@ -94,9 +141,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing }) =
         accept=".xlsx,.xls,.csv"
         onChange={handleInputChange}
         className="hidden"
+        multiple={multiple}
       />
       
-      {!selectedFile ? (
+      {!hasFiles ? (
         <div
           onClick={handleButtonClick}
           onDragEnter={handleDragEnter}
@@ -116,9 +164,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing }) =
               <p className="text-lg font-semibold text-gray-700 mb-2">
                 点击或拖拽上传科目余额表
               </p>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 mb-1">
                 支持 Excel (.xlsx, .xls) 和 CSV 格式，文件大小不超过 10MB
               </p>
+              {multiple && (
+                <p className="text-sm text-blue-600 font-medium">
+                  💡 支持多选文件，批量上传多期数据
+                </p>
+              )}
             </div>
             <Button 
               variant="outline" 
@@ -129,41 +182,100 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing }) =
               }}
             >
               <FileSpreadsheet className="w-4 h-4 mr-2" />
-              选择文件
+              {multiple ? '选择多个文件' : '选择文件'}
             </Button>
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-xl bg-green-100 flex items-center justify-center">
-                <FileSpreadsheet className="w-7 h-7 text-green-600" />
+        <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
+          {/* 批量上传进度 */}
+          {multiple && totalCount > 0 && (
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-blue-800">
+                  批量上传进度
+                </span>
+                <span className="text-sm text-blue-600">
+                  {currentIndex} / {totalCount}
+                </span>
               </div>
-              <div>
-                <p className="font-semibold text-gray-800">{selectedFile.name}</p>
-                <p className="text-sm text-gray-500">
-                  {(selectedFile.size / 1024).toFixed(2)} KB
-                </p>
+              <div className="w-full bg-blue-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all"
+                  style={{ width: `${(currentIndex / totalCount) * 100}%` }}
+                />
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              {isProcessing ? (
-                <div className="flex items-center gap-2 text-blue-600">
-                  <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-sm">分析中...</span>
+          )}
+
+          {/* 文件列表 */}
+          <div className="space-y-3 max-h-64 overflow-y-auto">
+            {selectedFiles.map((file, index) => {
+              const period = extractPeriodFromFilename(file.name);
+              const isProcessingThis = isProcessing && multiple && index === currentIndex - 1;
+              const isDone = multiple && index < currentIndex;
+              
+              return (
+                <div 
+                  key={index}
+                  className={`flex items-center justify-between p-3 rounded-lg border ${
+                    isProcessingThis ? 'border-blue-300 bg-blue-50' :
+                    isDone ? 'border-green-300 bg-green-50' :
+                    'border-gray-200 bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      isDone ? 'bg-green-100' : 'bg-blue-100'
+                    }`}>
+                      {isDone ? (
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                      ) : isProcessingThis ? (
+                        <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <File className="w-5 h-5 text-blue-600" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800 text-sm">{file.name}</p>
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span>{(file.size / 1024).toFixed(1)} KB</span>
+                        {period && (
+                          <>
+                            <span>·</span>
+                            <span className="text-blue-600 font-medium">检测到期间: {period}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {!isProcessing && (
+                    <button
+                      onClick={() => handleRemoveFile(multiple ? index : undefined)}
+                      className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center transition-colors"
+                    >
+                      <X className="w-4 h-4 text-gray-500" />
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <CheckCircle className="w-6 h-6 text-green-500" />
-              )}
+              );
+            })}
+          </div>
+
+          {/* 清空按钮 */}
+          {!isProcessing && multiple && selectedFiles.length > 1 && (
+            <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between">
+              <span className="text-sm text-gray-500">
+                共 {selectedFiles.length} 个文件
+              </span>
               <button
-                onClick={handleRemoveFile}
-                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                onClick={() => handleRemoveFile()}
+                className="text-sm text-red-600 hover:text-red-800"
               >
-                <X className="w-4 h-4 text-gray-500" />
+                清空全部
               </button>
             </div>
-          </div>
+          )}
         </div>
       )}
       

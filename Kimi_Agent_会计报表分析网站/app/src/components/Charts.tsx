@@ -15,6 +15,9 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   Radar,
+  Line,
+  Area,
+  AreaChart,
 } from 'recharts';
 import type { ChartData } from '@/types/accounting';
 
@@ -179,6 +182,105 @@ export const IncomeExpenseChart: React.FC<IncomeExpenseChartProps> = ({
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  );
+};
+
+// 预测图表组件
+interface ForecastDataPoint {
+  period: string;
+  actual?: number;
+  forecast: number;
+  lowerBound: number;
+  upperBound: number;
+}
+
+interface ForecastChartProps {
+  data: ForecastDataPoint[];
+  title?: string;
+  color?: string;
+}
+
+export const ForecastChart: React.FC<ForecastChartProps> = ({ 
+  data, 
+  title = '趋势预测',
+  color = '#667eea'
+}) => {
+  return (
+    <div className="bg-white rounded-xl p-6 border border-gray-100">
+      {title && <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>}
+      <ResponsiveContainer width="100%" height={300}>
+        <AreaChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+          <defs>
+            <linearGradient id="colorForecast" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={color} stopOpacity={0.3}/>
+              <stop offset="95%" stopColor={color} stopOpacity={0}/>
+            </linearGradient>
+            <linearGradient id="colorConfidence" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={color} stopOpacity={0.1}/>
+              <stop offset="95%" stopColor={color} stopOpacity={0.05}/>
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <XAxis dataKey="period" tick={{ fontSize: 12 }} />
+          <YAxis tick={{ fontSize: 12 }} />
+          <Tooltip 
+            formatter={(value: number) => value.toLocaleString()}
+            labelFormatter={(label) => `期间: ${label}`}
+          />
+          <Legend />
+          {/* 置信区间 */}
+          <Area 
+            type="monotone" 
+            dataKey="upperBound" 
+            stroke="none" 
+            fill="url(#colorConfidence)" 
+            name="上限"
+          />
+          <Area 
+            type="monotone" 
+            dataKey="lowerBound" 
+            stroke="none" 
+            fill="transparent"
+            name="下限"
+          />
+          {/* 实际值 */}
+          {data.some(d => d.actual !== undefined) && (
+            <Line 
+              type="monotone" 
+              dataKey="actual" 
+              stroke="#43e97b" 
+              strokeWidth={2}
+              dot={{ r: 4, fill: '#43e97b' }}
+              name="实际值"
+            />
+          )}
+          {/* 预测值 */}
+          <Line 
+            type="monotone" 
+            dataKey="forecast" 
+            stroke={color} 
+            strokeWidth={2}
+            strokeDasharray="5 5"
+            dot={{ r: 4, fill: color }}
+            name="预测值"
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+      <div className="mt-4 flex items-center justify-center gap-6 text-sm text-gray-500">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-0.5 bg-green-400"></div>
+          <span>实际值</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-0.5 border-t-2 border-dashed" style={{ borderColor: color }}></div>
+          <span>预测值</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded opacity-20" style={{ backgroundColor: color }}></div>
+          <span>置信区间</span>
+        </div>
+      </div>
     </div>
   );
 };

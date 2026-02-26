@@ -94,12 +94,15 @@ export const performMultiPeriodAnalysis = (
 const compareBalanceSheet = (data: FinancialData): ComparisonItem[] => {
   const comparisons: ComparisonItem[] = [];
   
+  // 安全检查：确保数据存在
+  if (!data) return comparisons;
+  
   // 总资产
   comparisons.push(createComparisonItem(
     '资产总计',
     'balance_sheet',
-    data.totalAssets,
-    data.beginningTotalAssets,
+    data.totalAssets || 0,
+    data.beginningTotalAssets || 0,
     'high'
   ));
   
@@ -107,8 +110,8 @@ const compareBalanceSheet = (data: FinancialData): ComparisonItem[] => {
   comparisons.push(createComparisonItem(
     '负债总计',
     'balance_sheet',
-    data.totalLiabilities,
-    data.beginningTotalLiabilities,
+    data.totalLiabilities || 0,
+    data.beginningTotalLiabilities || 0,
     'high'
   ));
   
@@ -116,19 +119,43 @@ const compareBalanceSheet = (data: FinancialData): ComparisonItem[] => {
   comparisons.push(createComparisonItem(
     '所有者权益',
     'balance_sheet',
-    data.totalEquity,
-    data.beginningTotalEquity,
+    data.totalEquity || 0,
+    data.beginningTotalEquity || 0,
     'high'
   ));
   
   // 主要资产科目对比（Top 10）
-  const topAssets = Array.from(data.assets.entries())
-    .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
-    .slice(0, 10);
+  try {
+    const topAssets = Array.from(data.assets?.entries() || [])
+      .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
+      .slice(0, 10);
+    
+    topAssets.forEach(([name, currentValue]) => {
+      const previousValue = data.beginningAssets?.get(name) || 0;
+      const totalAssets = data.totalAssets || 1;
+      const beginningTotalAssets = data.beginningTotalAssets || 1;
+      if (currentValue > totalAssets * 0.05 || previousValue > beginningTotalAssets * 0.05) {
+        comparisons.push(createComparisonItem(
+          name,
+          'balance_sheet',
+          currentValue,
+          previousValue,
+          'medium'
+        ));
+      }
+    });
+  } catch (e) {
+    console.warn('资产科目对比出错:', e);
+  }
   
-  topAssets.forEach(([name, currentValue]) => {
-    const previousValue = data.beginningAssets.get(name) || 0;
-    if (currentValue > data.totalAssets * 0.05 || previousValue > data.beginningTotalAssets * 0.05) {
+  // 主要负债科目对比（Top 5）
+  try {
+    const topLiabilities = Array.from(data.liabilities?.entries() || [])
+      .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
+      .slice(0, 5);
+    
+    topLiabilities.forEach(([name, currentValue]) => {
+      const previousValue = data.beginningLiabilities?.get(name) || 0;
       comparisons.push(createComparisonItem(
         name,
         'balance_sheet',
@@ -136,24 +163,10 @@ const compareBalanceSheet = (data: FinancialData): ComparisonItem[] => {
         previousValue,
         'medium'
       ));
-    }
-  });
-  
-  // 主要负债科目对比（Top 5）
-  const topLiabilities = Array.from(data.liabilities.entries())
-    .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
-    .slice(0, 5);
-  
-  topLiabilities.forEach(([name, currentValue]) => {
-    const previousValue = data.beginningLiabilities.get(name) || 0;
-    comparisons.push(createComparisonItem(
-      name,
-      'balance_sheet',
-      currentValue,
-      previousValue,
-      'medium'
-    ));
-  });
+    });
+  } catch (e) {
+    console.warn('负债科目对比出错:', e);
+  }
   
   return comparisons.sort((a, b) => Math.abs(b.percentageChange) - Math.abs(a.percentageChange));
 };

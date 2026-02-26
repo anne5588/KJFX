@@ -29,6 +29,18 @@ export interface Anomaly {
   suggestion: string;
 }
 
+// 异常检测汇总结果
+export interface AnomalyDetectionResult {
+  anomalies: Anomaly[];
+  summary: {
+    totalCount: number;
+    highRisk: number;
+    mediumRisk: number;
+    lowRisk: number;
+    overallAssessment: string;
+  };
+}
+
 // 检测配置
 export interface DetectionConfig {
   suddenChangeThreshold: number;    // 突变阈值（30%）

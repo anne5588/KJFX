@@ -404,44 +404,60 @@ const detectAnomalies = (entries: LedgerEntry[]): LedgerAnomaly[] => {
     });
   }
   
-  // 2. 频繁交易检测（同一天同一单位多笔）
-  const dateCounterpartyMap = new Map<string, number>();
+  // 2. 频繁交易检测（同一天同一单位多笔且金额异常）
+  // 放宽条件：同一天同一单位超过5笔，或同一天同一单位多笔且总金额异常大
+  const dateCounterpartyMap = new Map<string, { count: number; totalAmount: number; entries: LedgerEntry[] }>();
   entries.forEach(e => {
     const key = `${e.date}_${e.auxiliary}`;
-    dateCounterpartyMap.set(key, (dateCounterpartyMap.get(key) || 0) + 1);
+    const existing = dateCounterpartyMap.get(key);
+    const amount = Math.max(e.debit, e.credit);
+    if (existing) {
+      existing.count++;
+      existing.totalAmount += amount;
+      existing.entries.push(e);
+    } else {
+      dateCounterpartyMap.set(key, { count: 1, totalAmount: amount, entries: [e] });
+    }
   });
   
   const frequentEntries: LedgerEntry[] = [];
-  dateCounterpartyMap.forEach((count, key) => {
-    if (count >= 3) {
-      const [date, counterparty] = key.split('_');
-      entries.filter(e => e.date === date && e.auxiliary === counterparty)
-        .forEach(e => frequentEntries.push(e));
+  dateCounterpartyMap.forEach((data) => {
+    // 条件：同一天同一单位超过5笔，或超过3笔且总金额超过平均单笔金额的20倍
+    if (data.count >= 5 || (data.count >= 3 && data.totalAmount > avgAmount * 20)) {
+      frequentEntries.push(...data.entries);
     }
   });
   
   if (frequentEntries.length > 0) {
     anomalies.push({
       type: 'frequent_transaction',
-      description: '发现同一天同一单位多笔交易',
+      description: '发现同一天同一单位频繁交易（超过5笔或金额异常集中）',
       entries: frequentEntries,
       riskLevel: 'low',
     });
   }
   
-  // 3. 整数金额检测（可能是人为操作）
-  const roundEntries = entries.filter(e => {
-    const amount = Math.max(e.debit, e.credit);
-    return amount > 10000 && amount % 10000 === 0;
-  });
+  // 3. 整数金额检测（排除正常的预存预付、应收应付）
+  // 排除包含以下关键词的科目：预存、预付、应收、应付、预收、预提、待摊
+  const excludedKeywords = ['预存', '预付', '应收', '应付', '预收', '预提', '待摊', '押金', '保证金'];
+  const isExcludedSubject = entries.length > 0 && excludedKeywords.some(kw => 
+    entries[0].subjectName.includes(kw)
+  );
   
-  if (roundEntries.length > 0) {
-    anomalies.push({
-      type: 'round_number',
-      description: `发现${roundEntries.length}笔整数金额交易`,
-      entries: roundEntries.slice(0, 5),
-      riskLevel: 'low',
+  if (!isExcludedSubject) {
+    const roundEntries = entries.filter(e => {
+      const amount = Math.max(e.debit, e.credit);
+      return amount > 10000 && amount % 10000 === 0;
     });
+    
+    if (roundEntries.length > 0) {
+      anomalies.push({
+        type: 'round_number',
+        description: `发现${roundEntries.length}笔整数金额交易`,
+        entries: roundEntries.slice(0, 5),
+        riskLevel: 'low',
+      });
+    }
   }
   
   return anomalies;
