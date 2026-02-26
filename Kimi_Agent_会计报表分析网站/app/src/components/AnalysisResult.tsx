@@ -5,6 +5,7 @@ import {
   Shield, Wallet, RotateCcw, TrendingDown, Award, Target, AlertOctagon, Info,
   ArrowUpRight, ArrowDownRight, Minus, LineChart, Building2, FileSearch, Download, Sparkles
 } from 'lucide-react';
+import html2pdf from 'html2pdf.js';
 import type { AnalysisResult as AnalysisResultType, ChartData } from '@/types/accounting';
 import { formatCurrencyUniform, type FinancialData, type DupontAnalysis } from '@/utils/excelParser';
 
@@ -2162,19 +2163,33 @@ const SmartReportTab: React.FC<SmartReportTabProps> = ({ financialData, metrics 
   };
   
   const downloadReport = () => {
-    const blob = new Blob([report.fullText], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = '财务分析报告.md';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // 获取报告内容的 DOM 元素
+    const reportElement = document.getElementById('smart-report-content');
+    if (!reportElement) return;
+    
+    // 配置 PDF 选项
+    const opt: any = {
+      margin: [10, 10, 10, 10],
+      filename: `财务分析报告_${new Date().toLocaleDateString()}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { 
+        scale: 2,
+        useCORS: true,
+        logging: false
+      },
+      jsPDF: { 
+        unit: 'mm', 
+        format: 'a4', 
+        orientation: 'portrait' 
+      }
+    };
+    
+    // 生成 PDF
+    html2pdf().set(opt).from(reportElement).save();
   };
 
   return (
-    <div className="space-y-6">
+    <div id="smart-report-content" className="space-y-6">
       {/* 报告标题 */}
       <Card className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
         <CardContent className="p-6">

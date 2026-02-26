@@ -5,8 +5,9 @@ import React, { useState, useMemo } from 'react';
 import type { PeriodData } from '@/types/company';
 import { 
   TrendingUp, Minus, ArrowUpRight, ArrowDownRight,
-  Activity, ShoppingCart, Package, CreditCard, Wallet, Target, ChevronRight
+  Activity, ShoppingCart, Package, CreditCard, Wallet, Target, ChevronRight, ChevronLeft
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { analyzeIncomeCostExpense, type IncomeCostExpenseAnalysis } from '@/utils/multiPeriodComparison';
 
@@ -296,7 +297,7 @@ const ComparisonTable: React.FC<{
 };
 
 // 主组件
-const MultiPeriodComparisonNew: React.FC<MultiPeriodComparisonNewProps> = ({ periods }) => {
+const MultiPeriodComparisonNew: React.FC<MultiPeriodComparisonNewProps> = ({ periods, onClose }) => {
   const [activeSection, setActiveSection] = useState('overview');
   
   // 按期间排序
@@ -337,6 +338,17 @@ const MultiPeriodComparisonNew: React.FC<MultiPeriodComparisonNewProps> = ({ per
       {/* 左侧导航 */}
       <div className="w-64 bg-white border-r">
         <div className="p-4 border-b">
+          {onClose && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={onClose}
+              className="mb-3 -ml-2 text-gray-600 hover:text-gray-900"
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              返回
+            </Button>
+          )}
           <h2 className="text-lg font-bold text-gray-900">多期对比分析</h2>
           <p className="text-xs text-gray-500 mt-1">共 {periods.length} 个期间</p>
         </div>
