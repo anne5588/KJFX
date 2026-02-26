@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { 
   Calculator, 
   FileSpreadsheet, 
-  ChevronRight,
   CheckCircle,
   Settings2,
   Building2,
@@ -16,9 +15,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import FileUpload from '@/components/FileUpload';
 import AnalysisResult from '@/components/AnalysisResult';
+import { CompanyCard } from '@/components/CompanyCard';
 import { parseExcelFile, calculateMetrics, generateSuggestions, type FinancialData, type DupontAnalysis, calculateDupont, setUnit, getCurrentUnit, type UnitType } from '@/utils/excelParser';
 import type { AnalysisResult as AnalysisResultType } from '@/types/accounting';
 import type { CompanyAccount, PeriodData } from '@/types/company';
@@ -34,6 +33,7 @@ import {
 import { analyzeIncomeCostExpense, type IncomeCostExpenseAnalysis } from '@/utils/multiPeriodComparison';
 import MultiPeriodComparisonNew from '@/components/MultiPeriodComparisonNew';
 import { Toaster, toast } from 'sonner';
+import './styles/design-system.css';
 
 // 视图模式
  type ViewMode = 'companies' | 'periods' | 'analysis' | 'multiPeriod';
@@ -475,62 +475,32 @@ function App() {
               </Card>
             )}
 
-            {/* 公司列表 */}
+            {/* 公司列表 - 使用现代化卡片 */}
             {companies.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {companies.map((company) => (
-                  <Card 
-                    key={company.id} 
-                    className="cursor-pointer hover:shadow-lg transition-shadow group"
-                    onClick={() => handleSelectCompany(company)}
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
-                            <Building2 className="w-6 h-6 text-blue-600" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900">{company.name}</h3>
-                            <p className="text-sm text-gray-500">{company.periods.length} 期数据</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => handleDeleteCompany(company.id, e)}
-                          className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-500 transition-opacity"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                      
-                      {company.periods.length > 0 && (
-                        <div className="mt-4 pt-4 border-t border-gray-100">
-                          <p className="text-xs text-gray-500 mb-2">最近期间：</p>
-                          <div className="flex flex-wrap gap-1">
-                            {company.periods.slice(-3).map(p => (
-                              <Badge key={p.id} variant="secondary" className="text-xs">
-                                {p.period}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      
-                      <Button 
-                        variant="ghost" 
-                        className="w-full mt-4 text-blue-600"
-                      >
-                        进入查看 <ChevronRight className="w-4 h-4 ml-1" />
-                      </Button>
-                    </CardContent>
-                  </Card>
+                  <CompanyCard
+                    key={company.id}
+                    company={company}
+                    onSelect={() => handleSelectCompany(company)}
+                    onDelete={(e: React.MouseEvent) => handleDeleteCompany(company.id, e)}
+                  />
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12 text-gray-500">
-                <Building2 className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <p>暂无公司账套</p>
-                <p className="text-sm mt-1">点击上方按钮创建第一个公司</p>
+              <div className="text-center py-16">
+                <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-blue-50 to-purple-50 mb-6">
+                  <Building2 className="w-12 h-12 text-blue-400" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">暂无公司账套</h3>
+                <p className="text-gray-500 mb-6">创建您的第一个公司账套开始财务分析</p>
+                <Button 
+                  onClick={() => setShowCreateCompany(true)}
+                  className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600"
+                >
+                  <Plus className="w-4 h-4" />
+                  新建公司账套
+                </Button>
               </div>
             )}
           </div>
@@ -612,70 +582,88 @@ function App() {
               </Card>
             )}
 
-            {/* 期间数据表格 */}
+            {/* 期间数据表格 - 现代化样式 */}
             {currentCompany.periods.length > 0 ? (
-              <Card>
-                <CardContent className="p-0">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">期间</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">收入</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">成本</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">费用</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">净利润</th>
-                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {[...currentCompany.periods].sort((a, b) => a.periodDate.localeCompare(b.periodDate)).map((period) => (
-                        <tr key={period.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <Calendar className="w-4 h-4 text-gray-400" />
-                              <span className="font-medium text-gray-900">{period.period}</span>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                  <h3 className="font-semibold text-gray-900">期间数据列表</h3>
+                </div>
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50/80">
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">期间</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">营业收入</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">营业成本</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">期间费用</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">净利润</th>
+                      <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {[...currentCompany.periods].sort((a, b) => a.periodDate.localeCompare(b.periodDate)).map((period, index) => (
+                      <tr 
+                        key={period.id} 
+                        className="hover:bg-blue-50/30 transition-colors group"
+                        style={{ animationDelay: `${index * 50}ms` }}
+                      >
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                              <Calendar className="w-5 h-5 text-blue-600" />
                             </div>
-                          </td>
-                          <td className="px-6 py-4 text-right text-sm text-gray-600">
-                            {formatAmount(period.financialData.totalIncome)}
-                          </td>
-                          <td className="px-6 py-4 text-right text-sm text-gray-600">
-                            {formatAmount(period.financialData.totalExpenses * 0.7)}
-                          </td>
-                          <td className="px-6 py-4 text-right text-sm text-gray-600">
-                            {formatAmount(period.financialData.totalExpenses)}
-                          </td>
-                          <td className="px-6 py-4 text-right text-sm font-medium text-gray-900">
+                            <span className="font-semibold text-gray-900">{period.period}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="text-sm font-medium text-gray-700">{formatAmount(period.financialData.totalIncome)}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="text-sm text-gray-600">{formatAmount(period.financialData.totalExpenses * 0.7)}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="text-sm text-gray-600">{formatAmount(period.financialData.totalExpenses)}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className={`text-sm font-bold ${period.financialData.netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                             {formatAmount(period.financialData.netProfit)}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="flex items-center justify-center gap-2">
-                              <Button 
-                                size="sm" 
-                                variant="ghost"
-                                onClick={() => handleViewPeriod(period)}
-                              >
-                                查看分析
-                              </Button>
-                              <button
-                                onClick={() => handleDeletePeriod(period.id)}
-                                className="p-1 text-gray-400 hover:text-red-500"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </CardContent>
-              </Card>
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button 
+                              size="sm"
+                              onClick={() => handleViewPeriod(period)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                            >
+                              查看分析
+                            </Button>
+                            <button
+                              onClick={() => handleDeletePeriod(period.id)}
+                              className="p-2 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
-              <div className="text-center py-12 text-gray-500">
-                <FileSpreadsheet className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <p>暂无期间数据</p>
-                <p className="text-sm mt-1">点击"上传期间数据"按钮添加</p>
+              <div className="text-center py-16">
+                <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-blue-50 to-purple-50 mb-6">
+                  <FileSpreadsheet className="w-12 h-12 text-blue-400" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">暂无期间数据</h3>
+                <p className="text-gray-500 mb-6">上传财务数据开始分析</p>
+                <Button 
+                  onClick={() => setShowUploadDialog(true)}
+                  className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600"
+                >
+                  <Plus className="w-4 h-4" />
+                  上传期间数据
+                </Button>
               </div>
             )}
           </div>
