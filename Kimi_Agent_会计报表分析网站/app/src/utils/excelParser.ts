@@ -562,7 +562,8 @@ const parseBalanceDetailsSmart = (
     
     // 跳过标题、合计、空行
     if (!item || item.length < 2) continue;
-    if (item.includes('资产') || item.includes('合计') || item.includes('小计')) continue;
+    // 只跳过总计行，不跳过资产明细科目（如货币资金、应收账款等）
+    if (item.includes('资产总计') || item.includes('资产合计') || item.includes('合计') || item.includes('小计')) continue;
     if (item.includes('：') || item.includes(':')) continue;
     if (item.startsWith('其中')) continue;
     if (/^\d+$/.test(item)) continue; // 纯数字
@@ -591,7 +592,10 @@ const parseBalanceDetailsSmart = (
       
       // 跳过标题、合计、空行
       if (!item || item.length < 2) continue;
-      if (item.includes('负债') || item.includes('权益') || item.includes('合计') || item.includes('小计')) continue;
+      // 只跳过总计行和分类标题，不跳过明细科目
+      if (item.includes('负债总计') || item.includes('负债合计') || item.includes('权益总计') || item.includes('权益合计') || item.includes('合计') || item.includes('小计')) continue;
+      // 跳过分类标题行（如流动负债、非流动负债、所有者权益等）
+      if (item === '流动负债' || item === '非流动负债' || item === '负债' || item === '所有者权益' || item === '股东权益' || item === '权益') continue;
       if (item.includes('：') || item.includes(':')) continue;
       if (item.startsWith('其中')) continue;
       if (/^\d+$/.test(item)) continue; // 纯数字
